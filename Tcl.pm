@@ -1,24 +1,16 @@
 package Tcl;
-
-# $Id: Tcl.pm,v 1.3 1994/12/06 17:32:10 mbeattie Exp mbeattie $
-#
-# $Log: Tcl.pm,v $
-# Revision 1.3  1994/12/06  17:32:10  mbeattie
-# none
-#
-# Revision 1.2  1994/11/12  23:29:11  mbeattie
-# *** empty log message ***
-#
-# Revision 1.1  1994/11/12  13:05:45  mbeattie
-# Initial revision
-#
-# Revision 1.1  1994/11/12  13:05:45  mbeattie
-# Initial revision
-#
+use Carp;
 
 =head1 NAME
 
 Tcl - Tcl extension module for Perl
+
+=head1 SYNOPSIS
+
+    use Tcl;
+
+    $interp = new Tcl;
+    $interp->Eval('puts "Hello world"');
 
 =head1 DESCRIPTION
 
@@ -232,30 +224,30 @@ Malcolm Beattie, mbeattie@sable.ox.ac.uk, 23 Oct 1994.
 
 =cut
 
-require DynaLoader;
-@ISA = (DynaLoader);
+use DynaLoader;
+@ISA = qw(DynaLoader);
 
-$OK =		0;
-$ERROR =	1;
-$RETURN =	2;
-$BREAK =	3;
-$CONTINUE =	4;
+sub OK ()	{ 0 }
+sub ERROR ()	{ 1 }
+sub RETURN ()	{ 2 }
+sub BREAK ()	{ 3 }
+sub CONTINUE ()	{ 4 }
 
-$GLOBAL_ONLY =		1;
-$APPEND_VALUE =		2;
-$LIST_ELEMENT =		4;
-$TRACE_READS =		0x10;
-$TRACE_WRITES =		0x20;
-$TRACE_UNSETS =		0x40;
-$TRACE_DESTROYED =	0x80;
-$INTERP_DESTROYED =	0x100;
-$LEAVE_ERR_MSG =	0x200;
+sub GLOBAL_ONLY ()	{ 1 }
+sub APPEND_VALUE ()	{ 2 }
+sub LIST_ELEMENT ()	{ 4 }
+sub TRACE_READS ()	{ 0x10 }
+sub TRACE_WRITES ()	{ 0x20 }
+sub TRACE_UNSETS ()	{ 0x40 }
+sub TRACE_DESTROYED ()	{ 0x80 }
+sub INTERP_DESTROYED ()	{ 0x100 }
+sub LEAVE_ERR_MSG ()	{ 0x200 }
 
-$LINK_INT =		1;
-$LINK_DOUBLE =		2;
-$LINK_BOOLEAN =		3;
-$LINK_STRING =		4;
-$LINK_READ_ONLY =	0x80;
+sub LINK_INT ()		{ 1 }
+sub LINK_DOUBLE ()	{ 2 }
+sub LINK_BOOLEAN ()	{ 3 }
+sub LINK_STRING ()	{ 4 }
+sub LINK_READ_ONLY ()	{ 0x80 }
 
 bootstrap Tcl;
 
@@ -264,7 +256,7 @@ package Tcl::Var;
 sub TIESCALAR {
     my $class = shift;
     my @objdata = @_;
-    die "Usage: tie \$s, Tcl::Var, $interp, $varname [, $flags]"
+    Carp::croak 'Usage: tie $s, Tcl::Var, $interp, $varname [, $flags]'
 	unless @_ == 2 || @_ == 3;
     bless \@objdata, $class;
 }
@@ -272,7 +264,7 @@ sub TIESCALAR {
 sub TIEHASH {
     my $class = shift;
     my @objdata = @_;
-    die "Usage: tie %hash, Tcl::Var, $interp, $varname [, $flags]"
+    Carp::croak 'Usage: tie %hash, Tcl::Var, $interp, $varname [, $flags]'
 	unless @_ == 2 || @_ == 3;
     bless \@objdata, $class;
 }

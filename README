@@ -1,35 +1,48 @@
-	    Tcl extension module (release beta1) for Perl5
+	    Tcl extension module (release beta2) for Perl5
 
-	      Copyright (c) 1994, 1995  Malcolm Beattie
+	      Copyright (c) 1994-1997, Malcolm Beattie
 			 All rights reserved.
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2, or (at your option)
-    any later version.
+    it under the terms of either:
+
+        a) the GNU General Public License as published by the Free
+        Software Foundation; either version 1, or (at your option) any
+        later version, or
+
+        b) the "Artistic License" which comes with every Perl distribution.
 
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details. 
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See either
+    the GNU General Public License or the Artistic License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this distribution; if not, write to the Free Software
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
-This is the beta1 release of the Tcl extension module for Perl5. You
-need to have at least release 5.001 of Perl because the installation
-of this extension uses features of ExtUtils::MakeMaker which only work
-properly as of that release.
+This is the beta2 release of the Tcl extension module for Perl5. You
+need to have at least release 5.002 of Perl.
 
 The Tcl extension provides a small but complete interface into libtcl
 and any other Tcl-based library. It lets you create Tcl interpreters
 (as perl5 objects), bind in commands to them (either perl subroutines
 or C functions dynamically loaded with the DynaLoader extension) and
 execute Tcl code in those interpreters. There is a Tcl::Tk extension
-(not to be confused with "native" perl5 Tk extension) distributed
+(not to be confused with "native" perl5 Perl/Tk extension) distributed
 separately which provides a raw but complete interface to the whole of
 libtk via this Tcl extension.
+
+Build in the usual way for a perl extension:
+
+1. Tweak Makefile.PL is necessary--if your Tcl include files are
+neither in /usr/local/include nor in /usr/include/tcl then put the
+appropriate path in the INC line.
+
+2. perl Makefile.PL
+   make
+
+3. Before installing, you can run the small test suite with
+    make test
+if you wish.
+
+4.  make install
 
 Malcolm Beattie
 mbeattie@sable.ox.ac.uk

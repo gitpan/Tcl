@@ -1,19 +1,17 @@
-#!./perl
-# $Id: eval.t,v 1.2 1994/11/12 23:30:28 mbeattie Exp $
-BEGIN { push @INC, qw(. .. ../lib ../../lib ../../../lib) }
-
 use Tcl;
+
+$| = 1;
 
 print "1..5\n";
 
 $i = new Tcl;
-Eval $i q(puts "ok 1");
-($a, $b) = Eval $i q(list 2 ok);
+$i->Eval(q(puts "ok 1"));
+($a, $b) = $i->Eval(q(list 2 ok));
 print "$b $a\n";
-eval { Eval $i q(error "ok 3\n") };
+eval { $i->Eval(q(error "ok 3\n")) };
 print $@;
-call $i ("puts", "ok 4");
-EvalFileHandle $i 'DATA';
+$i->call("puts", "ok 4");
+$i->EvalFileHandle(\*DATA);
 __END__
 set foo ok
 set bar 5

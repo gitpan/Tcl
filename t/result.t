@@ -1,8 +1,6 @@
-#!./perl
-# $Id: result.t,v 1.2 1994/11/12 23:30:28 mbeattie Exp $
-BEGIN { push @INC, qw(. .. ../lib ../../lib ../../../lib) }
-
 use Tcl;
+
+$| = 1;
 
 print "1..5\n";
 

@@ -1,14 +1,12 @@
-#!./perl
-# $Id: var.t,v 1.2 1994/11/12 23:30:28 mbeattie Exp $
-BEGIN { push @INC, qw(. .. ../lib ../../lib ../../../lib) }
+use Tcl;
 
-require Tcl;
+$| = 1;
 
 print "1..6\n";
 
 sub foo {
     my $interp = $_[1];
-    my $glob = $interp->GetVar("bar", $Tcl::GLOBAL_ONLY);
+    my $glob = $interp->GetVar("bar", Tcl::GLOBAL_ONLY);
     my $loc = $interp->GetVar("bar");
     print "$glob $loc\n";
     $interp->GlobalEval('puts $four');

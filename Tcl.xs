@@ -3,22 +3,6 @@
 #include "XSUB.h"
 #include <tcl.h>
 
-#ifndef lint
-static char vcid[] = "$Id: Tcl.xs,v 1.3 1994/12/06 17:32:10 mbeattie Exp $";
-#endif /* lint */
-
-/* $Log: Tcl.xs,v $
- * Revision 1.3  1994/12/06  17:32:10  mbeattie
- * none
- *
- * Revision 1.2  1994/11/12  23:28:49  mbeattie
- * *** empty log message ***
- *
- * Revision 1.1  1994/11/12  13:04:24  mbeattie
- * Initial revision
- *
- */
-
 #define Tcl_new(class) Tcl_CreateInterp()
 #define Tcl_result(interp) interp->result
 #define Tcl_DESTROY(interp) Tcl_DeleteInterp(interp)

@@ -1,5 +1,3 @@
-Copying			The GNU General Public License
-INSTALL			Installation instructions
 Makefile.PL		Tcl extension makefile writer
 MANIFEST		This list of files
 README			Introduction to the Tcl extension
