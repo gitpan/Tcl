@@ -1,5 +1,11 @@
 Revision history for Perl extension Tcl.
 
+0.7     02-jul-2003, Vadim Konovalov
+        - Some possible coredumps were fixed (but not completely, hence FIXME
+          warning in Tcl.xs)
+        - some fixes from Slaven Rezic, (FreeBSD support and some more)
+        - perl-5.005 support (FreeBSD has this version after installation)
+
 0.6     08-jun-2003, Vadim Konovalov
         - now Tcl 'is-a' Tcl::Tk
         - improved access method for TCL Events (%y, %y and so on)

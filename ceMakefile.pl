@@ -1,7 +1,7 @@
 # This is WinCE Makefile.PL
 #
 # invoke this as
-#    perl -MCross=[your-cross-name] Makefile.PL PERL_CORE=1 PERL_SRC=[your-perl-distribution-for-wince-crosscompiling]
+#    perl -MCross=[your-cross-name] ceMakefile.pl PERL_CORE=1 PERL_SRC=[your-perl-distribution-for-wince-crosscompiling]
 # All appropriate environment variables shoult be set properly, such
 # as OSVERSION, PLATFORM, WCEROOT, SDKROOT. This is usually done with
 # appropriate 'bat' file. such as WCEMIPS.BAT

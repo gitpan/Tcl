@@ -172,7 +172,7 @@ Tcl_GlobalEval(interp, script)
 void
 Tcl_EvalFileHandle(interp, handle)
 	Tcl	interp
-	FILE *handle
+	PerlIO*	handle
 	int	append = 0;
 	SV *	interpsv = ST(0);
 	SV *	sv = sv_newmortal();
@@ -202,39 +202,121 @@ Tcl_icall(interp, proc, ...)
 	Tcl		interp
 	SV *		proc
 	Tcl_CmdInfo	cmdinfo = NO_INIT
-	int		i = NO_INIT
+	Tcl_CmdInfo *   pcmd = NO_INIT
+        static int	i, result, proclen, length = NO_INIT
+	static int	argc = NO_INIT
+	static Tcl_Obj **   objv = NO_INIT
 	static char **	argv = NO_INIT
 	static int	argv_cursize = 0;
+	static char *	str = NO_INIT
     PPCODE:
-	if (argv_cursize == 0)
-	{
+	argc = items-1;
+	if (argv_cursize == 0) {
 	    argv_cursize = (items < 16) ? 16 : items;
 	    New(666, argv, argv_cursize, char *);
+	    New(666, objv, argv_cursize, Tcl_Obj *);
 	}
-	else if (argv_cursize < items)
-	{
+	else if (argv_cursize < items) {
 	    argv_cursize = items;
 	    Renew(argv, argv_cursize, char *);
+	    Renew(objv, argv_cursize, Tcl_Obj *);
 	}
 	SP++;			/* bypass the interp argument */
-	for (i = 0; i < items - 1; i++)
-	{
-	    /*
-	     * Use proc as a spare SV* variable: macro SvPV evaluates
-	     * its arguments more than once.
-	     */
-	    proc = sv_mortalcopy(*++SP);
-	    argv[i] = SvPV(proc, PL_na);
-	}
-	argv[items - 1] = (char *) 0;
+	proc = sv_mortalcopy(*++SP);  /* get name of Tcl command into argv[0] */
+	argv[0] = SvPV(proc, proclen);
 	if (!Tcl_GetCommandInfo(interp, argv[0], &cmdinfo))
-	    croak("Tcl procedure not found");
-	SP -= items;
-	PUTBACK;
+	    croak("Tcl procedure '%s' not found",argv[0]);
+
 	Tcl_ResetResult(interp);
-	if ((*cmdinfo.proc)(cmdinfo.clientData,interp,items-1, argv) != TCL_OK)
-	    croak(interp->result);
-	prepare_Tcl_result(interp, "Tcl::call");
+
+        if (cmdinfo.proc) {
+	    /* 
+	     * good case. 
+	     * prepare string arguments into argv (1st is already done)
+	     * and call found procedure
+	     */
+	    for (i = 1; i < argc; i++) {
+		/*
+		 * Use proc as a spare SV* variable: macro SvPV evaluates
+		 * its arguments more than once.
+		 */
+		proc = sv_mortalcopy(*++SP);
+		argv[i] = SvPV(proc, PL_na);
+	    }
+	    argv[argc] = (char *) 0;
+	    SP -= items;
+	    PUTBACK;
+            /*
+	     * Invoke the command's procedure
+	     */
+            if ((*cmdinfo.proc)(cmdinfo.clientData,interp,items-1, argv) != TCL_OK)
+		croak(interp->result);
+	    prepare_Tcl_result(interp, "Tcl::call");
+        }
+        else {
+            /* 
+	     * we have cmdinfo.proc==0
+	     * strange case, but some commands place NULL into proc field of
+	     * Tcl_CmdInfo structure
+	     * Essentially we do here what TclInvokeObjectCommand (from Tcl)
+	     * do, namely create the object argument array "objv" before
+	     * calling right procedure
+             */
+       	    objv[0] = Tcl_NewStringObj(argv[0],proclen);
+            for (i = 1;  i < argc;  i++) {
+		proc = sv_mortalcopy(*++SP);
+        	str = SvPV(proc, length);
+        	objv[i] = Tcl_NewStringObj(str,length);
+        	Tcl_IncrRefCount(objv[i]);
+            }
+            objv[argc] = 0;
+	    PUTBACK;
+
+	    /*
+	     * Invoke the command's object-based Tcl_ObjCmdProc.
+	     */
+            result = (cmdinfo.objProc)(cmdinfo.objClientData, interp, argc, objv);
+
+	    /*
+	     * Move the interpreter's object result to the string result, 
+	     * then reset the object result.
+	     */
+            Tcl_SetResult(interp, Tcl_GetString(Tcl_GetObjResult(interp)),
+		    TCL_VOLATILE);
+	    
+	    /*
+	     * Decrement the ref counts for the argument objects created above
+	     */
+            for (i = 0;  i < argc;  i++) {
+        	Tcl_DecrRefCount(objv[i]);
+	    }
+            if (result != TCL_OK) {
+       	        croak(interp->result);
+	    }
+	    prepare_Tcl_result(interp, "Tcl::call");
+        }
+#if 0
+            /* Following lines of code are here in case we could not work
+	     * standard way
+	     * (say it's procedure address is zero)
+             * We warn about such case and just call "Eval"
+             */
+            SV *svline = newSVpv(argv[0],0);
+            for (i = 1; i < items - 1; i++) {
+		sv_catpv(svline," ");
+		sv_catpv(svline,argv[i]);
+            }
+	    if (!fixme_warned) {
+		warn("FIXME. slowdown because of frustration, command=%s\n"
+		     " (this warning is printed only once)\n",
+		    SvPV(svline,PL_na));
+		fixme_warned = 1;
+	    }
+            if (Tcl_Eval(interp, SvPV(sv_mortalcopy(svline), PL_na)) != TCL_OK) {
+       	        croak(interp->result);
+	    }
+	    prepare_Tcl_result(interp, "Tcl::call");
+#endif
 	SPAGAIN;
 
 void

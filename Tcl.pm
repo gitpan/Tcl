@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.6';
+$Tcl::VERSION = '0.7';
 
 =head1 NAME
 
@@ -101,7 +101,7 @@ arguments before being passed to PROC.
 Before invoking procedure PROC special processing is performed on ARG list:
 
 1.  All subroutine references within ARG will be substituted with Tcl name
-which is responcible to invoke this subroutine. This Tcl name will be
+which is responsible to invoke this subroutine. This Tcl name will be
 created using CreateCommand subroutine (see below).
 
 2.  All references to scalars will be substituted with names of Tcl variables
@@ -274,7 +274,8 @@ use DynaLoader;
 unless (defined $Tcl::Tk::VERSION) {
   package Tcl::Tk; # define empty package
 }
-our @ISA = qw(DynaLoader Tcl::Tk);
+use vars qw(@ISA);
+@ISA = qw(DynaLoader Tcl::Tk);
 
 sub OK ()	{ 0 }
 sub ERROR ()	{ 1 }
@@ -338,8 +339,9 @@ sub call {
       # we must prepare TCL-events variables such as TCL variables %x, %y
       # and so on, and next must be code reference for subroutine that will
       # use those variables.
+      # TODO - implement better way, using OO and blessing into special package
       if (ref($args[$argcnt+1]) ne 'CODE') {
-	warn "CODE reference expected";
+	warn "CODE reference expected after description of event fields";
 	next;
       }
       $args[$argcnt] = $interp->create_tcl_sub($args[$argcnt+1],$$$arg);
@@ -349,7 +351,15 @@ sub call {
       die "TODO Implement this! (array ref that means subroutine and its parameters)";
     }
   }
-  $interp->icall(@args);
+  my $res;
+  return $interp->icall(@args);
+  eval {
+    $res = $interp->icall(@args);
+  };
+  if ($@) {
+    confess "Tcl error $@ while invoking call\n \"@args\"";
+  }
+  return $res;
 }
 
 # create_tcl_sub will create TCL sub that will invoke perl anonymous sub
@@ -410,6 +420,15 @@ sub TIEHASH {
     Carp::croak 'Usage: tie %hash, Tcl::Var, $interp, $varname [, $flags]'
 	unless @_ == 2 || @_ == 3;
     bless \@objdata, $class;
+}
+
+sub UNTIE {
+    my $ref = shift;
+    print STDERR "UNTIE:$ref(@_)\n"; # Why this never called?
+}
+sub DESTROY {
+    my $ref = shift;
+    delete $anon_refs{$ref->[1]};
 }
 
 1;
