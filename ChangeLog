@@ -1,3 +1,90 @@
+2004-05-03  Vadim Konovalov <vkonovalov@peterstar.ru>
+
+	* Tcl.pm (icall): return of \\'xy' convenience
+	
+	* Changes: brief summary for version 0.80
+
+2004-04-30  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (TclObjFromSv): pass strings to Tcl in a strictly correct
+	way - check SvUTF8 before making a String obj, otherwise make a
+	ByteArray obj.  This is 100% correct, but not as efficient as
+	ignoring the corner-case binary/utf-8 discrepancies.
+
+2004-04-29  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs: add a hash of interps created that we can force delete
+	of prior to Tcl_Finalize, ensuring better cleanup.
+
+	* Makefile.PL: Added --usestubs option, which adds DEFINE flags.
+	* Tcl.pm:      Add stubs support to give us version and dll location
+	* Tcl.xs:      independence.  Tcl.xs can handle the loading and
+	finalization of Tcl.  Tcl_Finalize is now called by an END block
+	in Tcl.pm in all cases, flipping a bit that says we shouldn't call
+	any more Tcl_* APIs.
+
+	* Tcl.xs (Tcl_DoOneEvent): expose Tcl::DoOneEvent for perl and add
+	TCL_*_EVENTS and TCL_DONT_WAIT constants to BOOT block.
+	(TclObjFromSv): remove SvIOK check in SvNOK block to force the
+	int-equiv double check.  By default, perl does math with doubles,
+	so we need to force this check.  Possibly not necessary for 5.8+.
+
+2004-04-27  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (Tcl_SetVar, Tcl_SetVar2): make SV/Tcl_Obj aware.
+
+2004-04-25  Vadim Konovalov  <vkonovalov@peterstar.ru>
+
+	* Tcl.pm: rename Tcl::EV to Tcl::Ev
+
+2004-04-22  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (SvFromTclObj): For boolean types, use the string value
+	if it's not empty, as booleans that came from strings are often
+	not 0/1.  For list types, use "" for empty lists instead of an
+	empty AV.  This corrects a problem with Tcl literal sharing where
+	"" can be marked as a list, although the string is intended.
+
+2004-04-21  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (Tcl_EvalInPerl): create ::perl::Eval proc in Tcl_Init.
+	This can be used in Tcl to eval whatever you want in Perl.
+
+	* Tcl.pm: jump to v0.80.
+	Remove Tcl::Ev, replace with Tcl::EV.  This is used in the
+	callback creation instead of in the callback sub, passing the args
+	as proper args to the sub.  Removed the previously ability to have
+	ref-ref scalars magically convert to %-subs and consume the next
+	arg as a code ref.  What used to be written:
+	     '<Motion>', \\'XY', \&mysub, ...
+	is now written:
+	     '<Motion>', [\&mysub, Tcl::EV('%X', '%Y')], ...
+	and they are pass in as true args (no Tcl::Ev calls required).
+		**** POTENTIAL INCOMPATABILITY ****
+	Arguments from Tcl passed to sub with Perl args now properly pass
+	those args to the Perl sub as well (precede Perl args).  IOW, a
+	reference to [\&mysub, "foo"] that becomes CODE(0x1234) called
+	from Tcl as "CODE(0x1234) bar" will have ("bar", "foo") in @_.
+	(call): Create tied vars in Tcl in the ::perl namespace and leave
+	the ()s, making them all elements of the Tcl array ::perl::SCALAR.
+	(create_tcl_sub): Create procs in Tcl in the ::perl namespace.
+
+2004-04-21  Gisle Aas  <gisle@ActiveState.com>
+
+	* Tcl.pm (call): undo hack to prevent 1=>1.0 (for r1.17).  Should
+	not be needed after Jeff's r1.23 change to Tcl.xs.
+
+2004-04-20  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (TclObjFromSv): check for IV == NV in SvNOK to account
+	for some perl versions' overaggressiveness in promoting ints.
+
+2004-04-17  Vadim Konovalov  <vkonovalov@peterstar.ru>
+
+	* Tcl.pm (call): add hack to prevent 1=>1.0
+	* Tcl.pm: add wcall wrapper to 'call' function
+	* Changes: brief summary of changes between 0.76 and 0.77
+	
 2004-04-17  Vadim Konovalov  <vkonovalov@peterstar.ru>
 
 	* Makefile.PL: fix WinCE case, check if Tcl version supported
