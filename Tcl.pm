@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.75';
+$Tcl::VERSION = '0.76';
 
 =head1 NAME
 
@@ -115,7 +115,7 @@ code as:
 
 3.  As a special case, it is supported a mechanism to deal with Tk's special
 event variables (they are mentioned as '%x', '%y' and so on throughout Tcl).
-Before suborutine reference that uses such variables there must be placed a 
+Before suborutine reference that uses such variables there must be placed a
 reference to reference to a string that enumerates all desired fields.
 After this is done, access to event fields is performed via Tcl::Ev subroutine.
 Example:
@@ -260,6 +260,8 @@ and I<vice versa>.
 
 Malcolm Beattie, mbeattie@sable.ox.ac.uk, 23 Oct 1994.
 Vadim Konovalov, vkonovalov@peterstar.ru, 19 May 2003.
+Jeff Hobbs, jeff (a) activestate . com, 22 Mar 2004.
+Gisle Aas, gisle (a) activestate . com, 14 Apr 2004.
 
 =head1 COPYRIGHT
 
@@ -271,35 +273,10 @@ See http://www.perl.com/perl/misc/Artistic.html
 
 use strict;
 use DynaLoader;
-unless (defined $Tcl::Tk::VERSION) {
-    package Tcl::Tk; # define empty package
-}
 use vars qw(@ISA);
-@ISA = qw(DynaLoader Tcl::Tk);
+@ISA = qw(DynaLoader);
 
-sub OK ()	{ 0 }
-sub ERROR ()	{ 1 }
-sub RETURN ()	{ 2 }
-sub BREAK ()	{ 3 }
-sub CONTINUE ()	{ 4 }
-
-sub GLOBAL_ONLY ()	{ 1 }
-sub APPEND_VALUE ()	{ 2 }
-sub LIST_ELEMENT ()	{ 4 }
-sub TRACE_READS ()	{ 0x10 }
-sub TRACE_WRITES ()	{ 0x20 }
-sub TRACE_UNSETS ()	{ 0x40 }
-sub TRACE_DESTROYED ()	{ 0x80 }
-sub INTERP_DESTROYED ()	{ 0x100 }
-sub LEAVE_ERR_MSG ()	{ 0x200 }
-
-sub LINK_INT ()		{ 1 }
-sub LINK_DOUBLE ()	{ 2 }
-sub LINK_BOOLEAN ()	{ 3 }
-sub LINK_STRING ()	{ 4 }
-sub LINK_READ_ONLY ()	{ 0x80 }
-
-bootstrap Tcl;
+Tcl->bootstrap($Tcl::VERSION);
 
 #TODO make better wording here
 # %anon_refs keeps track of anonymous subroutines that were created with
@@ -310,41 +287,45 @@ bootstrap Tcl;
 
 my %anon_refs;
 
-# subroutine "call" checks for its parameters, adopts them and calls "icall"
-# method which implemented in Tcl.xs file and does essential work
+# Subroutine "call" preprocess the arguments for special cases
+# and then calls "icall" (implemented in Tcl.xs), which invokes
+# the command in Tcl.
 sub call {
-    if (0) {
-	local $"=',';
-	print STDERR "{{@_}}\n";
-    };
-    # look for CODE and ARRAY refs and substitute them with working code
-    # fragments
     my $interp = shift;
-    my @args = map{defined $_?$_:""} @_; # this could be optimized
+    my @args = @_;
+
+    # Process arguments looking for special cases
     for (my $argcnt=0; $argcnt<=$#args; $argcnt++) {
 	my $arg = $args[$argcnt];
-	next unless ref $arg;
-	if (ref($arg) eq 'CODE') {
+	my $ref = ref($arg);
+	next unless $ref;
+	if ($ref eq 'CODE') {
+	    # We have been passed something like \&subroutine
+	    # Create a proc in Tcl that invokes this subroutine (no args)
 	    $args[$argcnt] = $interp->create_tcl_sub($arg);
 	}
-	elsif (ref($arg) =~ /^Tcl::Tk::Widget\b/) {
-	    # this trick will help manipulate widgets
+	elsif ($ref =~ /^Tcl::Tk::Widget\b/) {
+	    # We have been passed a widget reference.
+	    # Convert to its Tk pathname (eg, .top1.fr1.btn2)
 	    $args[$argcnt] = $arg->path;
 	}
-	elsif (ref($arg) eq 'SCALAR') {
+	elsif ($ref eq 'SCALAR') {
+	    # We have been passed something like \$scalar
+	    # Create a tied variable between Tcl and Perl.
 	    my $nm = "$arg"; # stringify scalar ref ...
-	    $nm =~ s/\W/_/g;
+	    $nm =~ s/\W/_/g; # remove () from stringified name
 	    unless (exists $anon_refs{$nm}) {
 		$anon_refs{$nm}++;
 		my $s = $$arg;
 		tie $$arg, 'Tcl::Var', $interp, $nm;
+		$s = '' unless defined $s;
 		$$arg = $s;
 	    }
 	    $args[$argcnt] = $nm; # ... and substitute its name
 	}
-	elsif (ref($arg) eq 'REF' and ref($$arg) eq 'SCALAR') {
-	    # this is a very special case: if we see construct like \\"xy"
-	    # then we must prepare TCL-events variables such as TCL
+	elsif ($ref eq 'REF' && ref($$arg) eq 'SCALAR') {
+	    # Very special case: if we see construct like \\"xy"
+	    # then we must prepare Tcl-events variables such as Tcl
 	    # variables %x, %y and so on, and next must be code reference
 	    # for subroutine that will use those variables.
 	    # TODO - implement better way, using OO and blessing into
@@ -356,24 +337,35 @@ sub call {
 	    $args[$argcnt] = $interp->create_tcl_sub($args[$argcnt+1],$$$arg);
 	    splice @args, $argcnt+1, 1;
 	}
-	elsif (ref($arg) eq 'ARRAY') {
-	    if (ref($arg->[0]) eq 'CODE') {
-		$args[$argcnt] = $interp->create_tcl_sub(sub {$arg->[0]->(@$arg[1..$#$arg])});
-	    }
-	    else {
-		$args[$argcnt] = join ' ', @$arg;
-	    }
+	elsif ($ref eq 'ARRAY' && ref($arg->[0]) eq 'CODE') {
+	    # We have been passed something like [\&subroutine, $arg1, ...]
+	    # Create a proc in Tcl that invokes this subroutine with args
+	    $args[$argcnt] =
+		$interp->create_tcl_sub(sub {$arg->[0]->(@$arg[1..$#$arg])});
 	}
     }
-    my (@res,$res);
-    eval {
-	@res = $interp->icall(@args);
-    };
-    if ($@) {
-	confess "Tcl error $@ while invoking call\n \"@args\"";
+    # Done with special var processing.  The only processing that icall
+    # will do with the args is efficient conversion of SV to Tcl_Obj.
+    # A SvIV will become a Tcl_IntObj, ARRAY refs will become Tcl_ListObjs,
+    # and so on.  The return result from icall will do the opposite,
+    # converting a Tcl_Obj to an SV.
+    if (wantarray) {
+	my @res;
+	eval { @res = $interp->icall(@args); };
+	if ($@) {
+	    confess "Tcl error '$@' while invoking array result call:\n" .
+		"\t\"@args\"";
+	}
+	return @res;
+    } else {
+	my $res;
+	eval { $res = $interp->icall(@args); };
+	if ($@) {
+	    confess "Tcl error '$@' while invoking scalar result call:\n" .
+		"\t\"@args\"";
+	}
+	return $res;
     }
-    return @res if wantarray;
-    return $res[0];
 }
 
 # create_tcl_sub will create TCL sub that will invoke perl anonymous sub
@@ -386,8 +378,8 @@ my %Ev_helper;
 sub create_tcl_sub {
     my ($interp,$sub,$events,$tclname) = @_;
     unless ($tclname) {
-	$tclname = "$sub"; # stringify subroutine ...
-	$tclname =~ s/\W/_/g;
+	$tclname = "$sub"; # stringify sub, becomes "CODE(0x######)"
+	#$tclname =~ s/\W/_/g;
     }
     unless (exists $anon_refs{$tclname}) {
 	$anon_refs{$tclname}++;
@@ -404,7 +396,7 @@ sub create_tcl_sub {
 }
 sub Ev {
     my $s = shift;
-    if (length($s)>1) {
+    if (!defined($s) || length($s) != 1) {
 	warn "Event variable must have length 1";
 	return;
     }
@@ -444,6 +436,34 @@ sub DESTROY {
     my $ref = shift;
     delete $anon_refs{$ref->[1]};
 }
+
+# This is the perl equiv to the C version, for reference
+#
+#sub STORE {
+#    my $obj = shift;
+#    Carp::croak "STORE Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
+#	unless @{$obj} == 2 || @{$obj} == 3;
+#    my ($interp, $varname, $flags) = @{$obj};
+#    my ($str1, $str2) = @_;
+#    if ($str2) {
+#	$interp->SetVar2($varname, $str1, $str2, $flags);
+#    } else {
+#	$interp->SetVar($varname, $str1, $flags || 0);
+#    }
+#}
+#
+#sub FETCH {
+#    my $obj = shift;
+#    Carp::croak "FETCH Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
+#	unless @{$obj} == 2 || @{$obj} == 3;
+#    my ($interp, $varname, $flags) = @{$obj};
+#    my $key = shift;
+#    if ($key) {
+#	return $interp->GetVar2($varname, $key, $flags || 0);
+#    } else {
+#	return $interp->GetVar($varname, $flags || 0);
+#    }
+#}
 
 1;
 __END__
