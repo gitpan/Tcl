@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.7';
+$Tcl::VERSION = '0.71';
 
 =head1 NAME
 

@@ -281,8 +281,13 @@ Tcl_icall(interp, proc, ...)
 	     * Move the interpreter's object result to the string result, 
 	     * then reset the object result.
 	     */
+#if TCL_MAJOR_VERSION>8 || TCL_MAJOR_VERSION>=8 && TCL_MINOR_VERSION>0
             Tcl_SetResult(interp, Tcl_GetString(Tcl_GetObjResult(interp)),
 		    TCL_VOLATILE);
+#else /* elder Tcl do not have Tcl_GetString */
+            Tcl_SetResult(interp, Tcl_GetObjResult(interp)->bytes,
+		    TCL_VOLATILE);
+#endif
 	    
 	    /*
 	     * Decrement the ref counts for the argument objects created above
@@ -293,8 +298,6 @@ Tcl_icall(interp, proc, ...)
             if (result != TCL_OK) {
        	        croak(interp->result);
 	    }
-	    prepare_Tcl_result(interp, "Tcl::call");
-        }
 #if 0
             /* Following lines of code are here in case we could not work
 	     * standard way
@@ -315,9 +318,11 @@ Tcl_icall(interp, proc, ...)
             if (Tcl_Eval(interp, SvPV(sv_mortalcopy(svline), PL_na)) != TCL_OK) {
        	        croak(interp->result);
 	    }
+#endif /* 0 */
+
 	    prepare_Tcl_result(interp, "Tcl::call");
-#endif
-	SPAGAIN;
+        }
+        SPAGAIN;
 
 void
 Tcl_DESTROY(interp)
