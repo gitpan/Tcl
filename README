@@ -42,5 +42,8 @@ if you wish.
 
 4.  make install
 
-Malcolm Beattie
-mbeattie@sable.ox.ac.uk
+In rare case when you do cross-compiling for WinCE, you need to edit and
+use ceMakefile.PL
+
+Malcolm Beattie	mbeattie@sable.ox.ac.uk
+Vadim Konovalov	vkonovalov@peterstar.ru

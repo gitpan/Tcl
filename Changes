@@ -1,5 +1,11 @@
 Revision history for Perl extension Tcl.
 
+0.6     08-jun-2003, Vadim Konovalov
+        - now Tcl 'is-a' Tcl::Tk
+        - improved access method for TCL Events (%y, %y and so on)
+        - WinCE support
+        - few BUGs fixed
+
 0.5	25-may-2003, Vadim Konovalov
 	- 'linux' and 'cygwin' supported
 

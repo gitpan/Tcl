@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.5';
+$Tcl::VERSION = '0.6';
 
 =head1 NAME
 
@@ -98,20 +98,41 @@ arguments (ARG, ...) without passing through the Tcl parser. For example,
 spaces embedded in any ARG will not cause it to be split into two Tcl
 arguments before being passed to PROC.
 
-Any anonymous subroutine reference within arguments will be substituted
-into Tcl name that will invoke this subroutine. Tcl name will be created
-by CreateCommand subroutine (see below). References to scalars also
-transformed appropriately. This allows to write such code as
+Before invoking procedure PROC special processing is performed on ARG list:
+
+1.  All subroutine references within ARG will be substituted with Tcl name
+which is responcible to invoke this subroutine. This Tcl name will be
+created using CreateCommand subroutine (see below).
+
+2.  All references to scalars will be substituted with names of Tcl variables
+transformed appropriately.
+
+These first two items allows to write and expect it to work properly such
+code as:
 
   my $r = 'aaaa';
   button(".d", -textvariable => \$r, -command=>sub {$r++});
 
-and expect it to work properly.
+3.  As a special case, it is supported a mechanism to deal with Tk's special
+event variables (they are mentioned as '%x', '%y' and so on throughout Tcl).
+Before suborutine reference that uses such variables there must be placed a 
+reference to reference to a string that enumerates all desired fields.
+After this is done, access to event fields is performed via Tcl::Ev subroutine.
+Example:
 
-In case subroutine requires access to special events fields (they are
-mentioned as '%x', '%y' and so on), that anonymous subroutine must be
-wrapped into 'ev_sub' wrapper. See Tcl::Tk for explanation on this
-events processing. (!!! explain better here!).
+  $widget->bind('text', '<2>', \\'xy', sub {textPaste ($c)} );
+  sub textPaste {
+    my ($w,$x,$y) = (shift, Tcl::Ev('x'), Tcl::Ev('y'));
+    widget($w)->insert('text', "\@$x,$y", $interp->Eval('selection get'));
+  }
+
+
+=item Tcl::Ev (FEILD)
+
+Returns Tcl/Tk special event field designated by argument FIELD. FIELD must
+be single character. Before invoking Tcl::Ev a subroutine that will call it
+must enlist appropriate fields in argument list before appropriate code
+reference in call to Tcl. See description of 'call' method for details.
 
 =item result ()
 
@@ -250,7 +271,10 @@ See http://www.perl.com/perl/misc/Artistic.html
 
 use strict;
 use DynaLoader;
-our @ISA = qw(DynaLoader);
+unless (defined $Tcl::Tk::VERSION) {
+  package Tcl::Tk; # define empty package
+}
+our @ISA = qw(DynaLoader Tcl::Tk);
 
 sub OK ()	{ 0 }
 sub ERROR ()	{ 1 }
@@ -293,9 +317,10 @@ sub call {
   # look for CODE and ARRAY refs and substitute them with working code fragments
   my $interp = shift;
   my @args = @_; # this could be optimized
-  for my $arg (@args) {
+  for (my $argcnt=0;$argcnt<=$#args;$argcnt++) {
+    my $arg = $args[$argcnt];
     if (ref($arg) eq 'CODE') {
-      $arg = $interp->create_tcl_sub($arg);
+      $args[$argcnt] = $interp->create_tcl_sub($arg);
     }
     elsif (ref($arg) eq 'SCALAR') {
       my $nm = "$arg"; # stringify scalar ...
@@ -306,7 +331,19 @@ sub call {
 	tie $$arg, 'Tcl::Var', $interp, $nm;
 	$$arg = $s;
       }
-      $arg = $nm; # ... and substitute its name
+      $args[$argcnt] = $nm; # ... and substitute its name
+    }
+    if (ref($arg) eq 'REF' and ref($$arg) eq 'SCALAR') {
+      # this is a very special case: if we see construct like \\"xy" then
+      # we must prepare TCL-events variables such as TCL variables %x, %y
+      # and so on, and next must be code reference for subroutine that will
+      # use those variables.
+      if (ref($args[$argcnt+1]) ne 'CODE') {
+	warn "CODE reference expected";
+	next;
+      }
+      $args[$argcnt] = $interp->create_tcl_sub($args[$argcnt+1],$$$arg);
+      splice @args, $argcnt+1, 1;
     }
     elsif ((ref($arg) eq 'ARRAY') and (ref($arg->[0]) eq 'CODE')) {
       die "TODO Implement this! (array ref that means subroutine and its parameters)";
@@ -321,26 +358,35 @@ sub call {
 # if $tclname is specified then procedure will have namely that name, otherwise
 # it will have machine-readable name
 # returns tcl script suitable for using in tcl events
+my %Ev_helper;
 sub create_tcl_sub {
   my ($interp,$sub,$events,$tclname) = @_;
   unless ($tclname) {
     $tclname = "$sub"; # stringify subroutine ...
     $tclname =~ s/\W/_/g;
-    unless (exists $anon_refs{$tclname}) {
-      $anon_refs{$tclname}++;
-      $interp->CreateCommand($tclname, $sub);
-    }
+  }
+  unless (exists $anon_refs{$tclname}) {
+    $anon_refs{$tclname}++;
+    $interp->CreateCommand($tclname, $sub);
   }
   if ($events) {
     $tclname = (join '', map {"set _ptcl_ev$_ %$_;"} split '', $events) . "$tclname";
-    $tclname =~ s/_ptcl_e(?:#|%)/"_ptcl_ev".($1 eq '#'?'_sharp':'_perc')/eg;
+    $tclname =~ s/_ptcl_ev(?:#|%)/"_ptcl_ev".($1 eq '#'?'_sharp':'_perc')/eg;
     for (split '', $events) {
-      s/%/_perc/g; s/#/_sharp/g;
-      no strict 'refs';
-      tie ${"::_ptcl_ev$_"}, 'Tcl::Var', $interp, "_ptcl_ev$_";
+      $Ev_helper{$_} = $interp;
     }
   }
   $tclname;
+}
+sub Ev {
+  my $s = shift;
+  if (length($s)>1) {
+    warn "Event variable must have length 1";
+    return;
+  }
+  if ($s eq '%') {$s = '_perc'}
+  elsif ($s eq '#') {$s = '_sharp'}
+  return $Ev_helper{$s}->GetVar("_ptcl_ev$s");
 }
 sub ev_sub {
   my ($interp,$events,$sub) = @_;

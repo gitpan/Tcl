@@ -14,9 +14,8 @@ $tclcfg{incpath} = "-I$1/include";
 if ($^O eq 'MSWin32') {
     $tclver=~s/\.//;
 }
-elsif ($^O eq 'cygwin') {
-    $tclver=~s/\.//;
-    $libpref = 'cyg';
+else {
+    $tclver = '';
 }
 
 use ExtUtils::MakeMaker;
