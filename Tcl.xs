@@ -7,7 +7,7 @@
  * Copyright (c) 2003-2004, Vadim Konovalov
  * Copyright (c) 2004 ActiveState Corp., a division of Sophos PLC
  *
- * RCS: @(#) $Id: Tcl.xs,v 1.32 2004/05/07 04:28:09 hobbs2 Exp $
+ * RCS: @(#) $Id: Tcl.xs,v 1.36 2004/09/10 07:21:31 hobbs2 Exp $
  */
 
 #define PERL_NO_GET_CONTEXT     /* we want efficiency */
@@ -83,7 +83,7 @@ static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 static HMODULE tclHandle = NULL;
 
 static Tcl_Interp *g_Interp = NULL;
-static int (* tclKitDll_AppInit)(Tcl_Interp *) = NULL;
+static int (* tclKit_AppInit)(Tcl_Interp *) = NULL;
 
 #else
 
@@ -91,7 +91,7 @@ static int (* tclKitDll_AppInit)(Tcl_Interp *) = NULL;
  * !USE_TCL_STUBS
  */
 
-static int (* tclKitDll_AppInit)(Tcl_Interp *) = Tcl_Init;
+static int (* tclKit_AppInit)(Tcl_Interp *) = Tcl_Init;
 
 #endif
 
@@ -132,33 +132,41 @@ static HV *hvInterps = NULL;
  *
  *
  * Results:
- *	None.
+ *	Stores the handle of the library found in tclHandle and the
+ *	name it successfully loaded from in dllFilename (if dllFilenameSize
+	is != 0).
  *
  * Side effects:
- *	None.
+ *	Loads the library - user needs to dlclose it..
  *
  *----------------------------------------------------------------------
  */
 
 static int
-NpLoadLibrary(pTHX_ HMODULE *tclHandle)
+NpLoadLibrary(pTHX_ HMODULE *tclHandle, char *dllFilename, int dllFilenameSize)
 {
-    char *pos, *envdll, libname[MAX_PATH];
+    char *envdll, libname[MAX_PATH];
     HMODULE handle = (HMODULE) NULL;
 
     /*
      * Try a user-supplied Tcl dll to start with.
+     * If the var is supplied, force this to be correct or error out.
      */
     envdll = getenv("PERL_TCL_DLL");
     if (envdll != NULL) {
 	handle = dlopen(envdll, RTLD_NOW | RTLD_GLOBAL);
 	if (handle) {
-	    *tclHandle = handle;
-	    return TCL_OK;
+	    memcpy(libname, envdll, MAX_PATH);
+	} else {
+	    warn("NpLoadLibrary: could not find PERL_TCL_DLL Tcl dll: '%s'",
+		    envdll);
+	    return TCL_ERROR;
 	}
     }
 
     if (!handle) {
+	char *pos;
+
 	if (strlen(TCL_LIB_FILE) < 3) {
 	    warn("Invalid base Tcl library filename provided: '%s'",
 		    TCL_LIB_FILE);
@@ -245,6 +253,9 @@ NpLoadLibrary(pTHX_ HMODULE *tclHandle)
 	return TCL_ERROR;
     }
     *tclHandle = handle;
+    if (dllFilenameSize > 0) {
+	memcpy(dllFilename, libname, dllFilenameSize);
+    }
     return TCL_OK;
 }
 
@@ -275,6 +286,8 @@ NpInitialize(pTHX_ SV *X)
      */
     static CONST char *(*initstubs)(Tcl_Interp *, CONST char *, int)
 	= Tcl_InitStubs;
+    char dllFilename[MAX_PATH];
+    dllFilename[0] = '\0';
 
 #ifdef USE_TCL_STUBS
     /*
@@ -288,7 +301,8 @@ NpInitialize(pTHX_ SV *X)
 		"Tcl_CreateInterp");
 
 	if (createInterp == NULL) {
-	    if (NpLoadLibrary(aTHX_ &tclHandle) != TCL_OK) {
+	    if (NpLoadLibrary(aTHX_ &tclHandle, dllFilename, MAX_PATH)
+		    != TCL_OK) {
 		warn("Failed to load Tcl dll!");
 		return TCL_ERROR;
 	    }
@@ -308,8 +322,8 @@ NpInitialize(pTHX_ SV *X)
 	findExecutable = (void (*)(char *)) dlsym(tclHandle,
 		"Tcl_FindExecutable");
 
-	tclKitDll_AppInit = (int (*)(Tcl_Interp *)) dlsym(tclHandle,
-		"TclKitDll_AppInit");
+	tclKit_AppInit = (int (*)(Tcl_Interp *)) dlsym(tclHandle,
+		"TclKit_AppInit");
     }
 #else
     createInterp   = Tcl_CreateInterp;
@@ -317,12 +331,10 @@ NpInitialize(pTHX_ SV *X)
 #endif
 
 #ifdef WIN32
-    {
-	char name[MAX_PATH];
-	name[0] = '\0';
-	GetModuleFileNameA((HINSTANCE) tclHandle, name, MAX_PATH);
-	findExecutable(name);
+    if (dllFilename[0] == '\0') {
+	GetModuleFileNameA((HINSTANCE) tclHandle, dllFilename, MAX_PATH);
     }
+    findExecutable(dllFilename);
 #else
     findExecutable(X && SvPOK(X) ? SvPV_nolen(X) : NULL);
 #endif
@@ -343,10 +355,30 @@ NpInitialize(pTHX_ SV *X)
 	return TCL_ERROR;
     }
 
-    if (tclKitDll_AppInit == NULL) {
-	tclKitDll_AppInit = Tcl_Init;
+    /*
+     * If we didn't find TclKit_AppInit, then this is a regular Tcl
+     * installation, so invoke Tcl_Init.
+     * Otherwise, we need to set the kit path to indicate we want to
+     * use the dll as our base kit.
+     */
+    if (tclKit_AppInit == NULL) {
+	tclKit_AppInit = Tcl_Init;
+    } else {
+	char * (* tclKit_SetKitPath)(char *) = NULL;
+	/*
+	 * We need to see if this has TclKit_SetKitPath
+	 */
+	if ((dllFilename[0] != '\0')
+		&& (tclKit_SetKitPath = (char * (*)(char *)) dlsym(tclHandle,
+			    "TclKit_SetKitPath")) != NULL) {
+	    /*
+	     * XXX: Need to figure out how to populate dllFilename if
+	     * NpLoadLibrary didn't do it for us on Unix.
+	     */
+	    tclKit_SetKitPath(dllFilename);
+	}
     }
-    if (tclKitDll_AppInit(g_Interp) != TCL_OK) {
+    if (tclKit_AppInit(g_Interp) != TCL_OK) {
 	CONST84 char *msg = Tcl_GetVar(g_Interp, "errorInfo", TCL_GLOBAL_ONLY);
 	warn("Failed to initialize Tcl:\n%s", msg);
 	return TCL_ERROR;
@@ -455,7 +487,7 @@ SvFromTclObj(pTHX_ Tcl_Obj *objPtr)
 	    for (i = 0; i < objc; i++) {
 		av_push(av, SvFromTclObj(aTHX_ objv[i]));
 	    }
-	    sv = newRV_noinc((SV *) av);
+	    sv = sv_bless(newRV_noinc((SV *) av), gv_stashpv("Tcl::List", 1));
 	}
 	else {
 	    sv = newSVpvn("", 0);
@@ -487,7 +519,9 @@ TclObjFromSv(pTHX_ SV *sv)
     if (SvGMAGICAL(sv))
 	mg_get(sv);
 
-    if (SvROK(sv) && !SvOBJECT(SvRV(sv)) && (SvTYPE(SvRV(sv)) == SVt_PVAV)) {
+    if (SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVAV &&
+	(!SvOBJECT(SvRV(sv)) || sv_isa(sv, "Tcl::List")))
+    {
 	/*
 	 * Recurse into ARRAYs, turning them into Tcl list Objs
 	 */
@@ -1169,7 +1203,7 @@ Tcl_Init(interp)
 	Tcl	interp
     CODE:
 	if (!initialized) { return; }
-	if (tclKitDll_AppInit(interp) != TCL_OK) {
+	if (tclKit_AppInit(interp) != TCL_OK) {
 	    croak(Tcl_GetStringResult(interp));
 	}
 	Tcl_CreateObjCommand(interp, "::perl::Eval", Tcl_EvalInPerl,
@@ -1382,6 +1416,29 @@ Tcl_perl_detach(interp, name)
 	    NULL /* clientData*/
 	    );
         SPAGAIN;
+
+
+MODULE = Tcl		PACKAGE = Tcl::List
+
+SV*
+as_string(SV* sv,...)
+    PREINIT:
+	Tcl_Obj* objPtr;
+	int len;
+	char *str;
+    CODE:
+	objPtr = TclObjFromSv(aTHX_ sv);
+	Tcl_IncrRefCount(objPtr);
+	str = Tcl_GetStringFromObj(objPtr, &len);
+	RETVAL = newSVpvn(str, len);
+	/* should turn on, but let's check this first for efficiency */
+	if (len && has_highbit(str, len)) {
+	    SvUTF8_on(RETVAL);
+	}
+	Tcl_DecrRefCount(objPtr);
+    OUTPUT:
+	RETVAL
+
 
 MODULE = Tcl		PACKAGE = Tcl::Var
 

@@ -1,3 +1,39 @@
+2004-09-13  Vadim Konovalov <vadim@vkonovalov.ru>
+
+	* Tcl.pm: version 0.84
+	callbacks of type [$Tcl_Tk_widget, 'method name', ...]
+	* Makefile.pl: Mac OS X wisdom from Daniel A. Steffen
+	* Changes: brief summary for 0.84
+
+2004-09-10  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (NpLoadLibrary): make PERL_TCL_DLL check error if no file
+	is found.
+
+2004-06-01  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (NpLoadLibrary): minor code cleanup
+
+2004-05-31  Gisle Aas  <gisle@ActiveState.com>
+
+	* Tcl.pm: Introduce global variable $Tcl::STACK_TRACE.  Setting this
+	to a false value avoids some overhead in calls and make it possible
+	for icall to experience void context.
+
+	* Tcl.xs: Introduce class Tcl::List when a list is returned in scalar
+	context.  It works as before it is used as an array refence, but will
+	also stringify properly.
+	* Tcl.pm: Set up stringify overload of Tcl::List
+	* t/call.t: Test Tcl::List.
+
+2004-05-10  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (NpInitialize): change load around to use different
+	dll-kit based init that call TclKit_SetKitPath to indicate the
+	path of the kit for loading (the dll).
+	(NpLoadLibrary): take filename arg to pass the found library name
+	back to the caller.
+
 2004-05-09  Konovalov <vkonovalov@peterstar.ru>
 
 	* Changes: brief summary between 0.80 and 0.81
