@@ -1,6 +1,8 @@
 package Tcl;
 use Carp;
 
+$Tcl::VERSION = '0.4';
+
 =head1 NAME
 
 Tcl - Tcl extension module for Perl
@@ -95,6 +97,21 @@ Looks up procedure PROC in the interpreter and invokes it directly with
 arguments (ARG, ...) without passing through the Tcl parser. For example,
 spaces embedded in any ARG will not cause it to be split into two Tcl
 arguments before being passed to PROC.
+
+Any anonymous subroutine reference within arguments will be substituted
+into Tcl name that will invoke this subroutine. Tcl name will be created
+by CreateCommand subroutine (see below). References to scalars also
+transformed appropriately. This allows to write such code as
+
+  my $r = 'aaaa';
+  button(".d", -textvariable => \$r, -command=>sub {$r++});
+
+and expect it to work properly.
+
+In case subroutine requires access to special events fields (they are
+mentioned as '%x', '%y' and so on), that anonymous subroutine must be
+wrapped into 'ev_sub' wrapper. See Tcl::Tk for explanation on this
+events processing. (!!! explain better here!).
 
 =item result ()
 
@@ -218,14 +235,22 @@ Omit the I<$flags> argument if not wanted. Any alteration to Perl
 variable I<$hash{"key"}> affects the Tcl variable I<array(key)>
 and I<vice versa>.
 
-=head2 AUTHOR
+=head1 AUTHORS
 
 Malcolm Beattie, mbeattie@sable.ox.ac.uk, 23 Oct 1994.
+Vadim Konovalov, vkonovalov@peterstar.ru, 19 May 2003.
+
+=head1 COPYRIGHT
+
+This program is free software; you can redistribute it and/or modify it under the same terms as Perl itself.
+
+See http://www.perl.com/perl/misc/Artistic.html
 
 =cut
 
+use strict;
 use DynaLoader;
-@ISA = qw(DynaLoader);
+our @ISA = qw(DynaLoader);
 
 sub OK ()	{ 0 }
 sub ERROR ()	{ 1 }
@@ -250,6 +275,78 @@ sub LINK_STRING ()	{ 4 }
 sub LINK_READ_ONLY ()	{ 0x80 }
 
 bootstrap Tcl;
+
+#TODO make better wording here
+# %anon_refs keeps track of anonymous subroutines that were created with
+# "CreateComand" method during process of transformation of arguments for "call"
+# and other stuff such as scalar refs and so on.
+# (TODO -- find out how to check for refcounting and proper releasing of resources)
+my %anon_refs;
+
+# subroutine "call" checks for its parameters, adopts them and calls "icall"
+# method which implemented in Tcl.xs file and does essential work
+sub call {
+  if (0) {
+    local $"=',';
+    print STDERR "{{@_}}\n";
+  };
+  # look for CODE and ARRAY refs and substitute them with working code fragments
+  my $interp = shift;
+  my @args = @_; # this could be optimized
+  for my $arg (@args) {
+    if (ref($arg) eq 'CODE') {
+      $arg = $interp->create_tcl_sub($arg);
+    }
+    elsif (ref($arg) eq 'SCALAR') {
+      my $nm = "$arg"; # stringify scalar ...
+      $nm =~ s/\W/_/g;
+      unless (exists $anon_refs{$nm}) {
+        $anon_refs{$nm}++;
+	my $s = $$arg;
+	tie $$arg, 'Tcl::Var', $interp, $nm;
+	$$arg = $s;
+      }
+      $arg = $nm; # ... and substitute its name
+    }
+    elsif ((ref($arg) eq 'ARRAY') and (ref($arg->[0]) eq 'CODE')) {
+      die "TODO Implement this! (array ref that means subroutine and its parameters)";
+    }
+  }
+  $interp->icall(@args);
+}
+
+# create_tcl_sub will create TCL sub that will invoke perl anonymous sub
+# if $events variable is specified then special processing will be
+# performed to provide needed '%' variables
+# if $tclname is specified then procedure will have namely that name, otherwise
+# it will have machine-readable name
+# returns tcl script suitable for using in tcl events
+sub create_tcl_sub {
+  my ($interp,$sub,$events,$tclname) = @_;
+  unless ($tclname) {
+    $tclname = "$sub"; # stringify subroutine ...
+    $tclname =~ s/\W/_/g;
+    unless (exists $anon_refs{$tclname}) {
+      $anon_refs{$tclname}++;
+      $interp->CreateCommand($tclname, $sub);
+    }
+  }
+  if ($events) {
+    $tclname = (join '', map {"set _ptcl_ev$_ %$_;"} split '', $events) . "$tclname";
+    $tclname =~ s/_ptcl_e(?:#|%)/"_ptcl_ev".($1 eq '#'?'_sharp':'_perc')/eg;
+    for (split '', $events) {
+      s/%/_perc/g; s/#/_sharp/g;
+      no strict 'refs';
+      tie ${"::_ptcl_ev$_"}, 'Tcl::Var', $interp, "_ptcl_ev$_";
+    }
+  }
+  $tclname;
+}
+sub ev_sub {
+  my ($interp,$events,$sub) = @_;
+  return $interp->create_tcl_sub($sub,$events);
+}
+
 
 package Tcl::Var;
 

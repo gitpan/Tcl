@@ -10,6 +10,8 @@
 typedef Tcl_Interp *Tcl;
 typedef AV *Tcl__Var;
 
+static int findexecutable_called = 0;
+
 int Tcl_PerlCallWrapper(clientData, interp, argc, argv)
 ClientData clientData;
 Tcl_Interp *interp;
@@ -109,7 +111,7 @@ char *caller;
 	EXTEND(sp, argc);
 	while (argc--)
 	    PUSHs(sv_2mortal(newSVpv(*argv++, 0)));
-	free((char *) tofree);
+	ckfree((char *) tofree);
     }
     PUTBACK;
     return;
@@ -170,7 +172,7 @@ Tcl_GlobalEval(interp, script)
 void
 Tcl_EvalFileHandle(interp, handle)
 	Tcl	interp
-	FILE *	handle
+	FILE *handle
 	int	append = 0;
 	SV *	interpsv = ST(0);
 	SV *	sv = sv_newmortal();
@@ -178,9 +180,9 @@ Tcl_EvalFileHandle(interp, handle)
     PPCODE:
 	(void) sv_2mortal(SvREFCNT_inc(interpsv));
 	PUTBACK;
-	while (s = sv_gets(sv, handle, append))
+        while (s = sv_gets(sv, handle, append))
 	{
-	    if (!Tcl_CommandComplete(s))
+            if (!Tcl_CommandComplete(s))
 		append = 1;
 	    else
 	    {
@@ -196,7 +198,7 @@ Tcl_EvalFileHandle(interp, handle)
 	SPAGAIN;
 
 void
-Tcl_call(interp, proc, ...)
+Tcl_icall(interp, proc, ...)
 	Tcl		interp
 	SV *		proc
 	Tcl_CmdInfo	cmdinfo = NO_INIT
@@ -243,6 +245,9 @@ void
 Tcl_Init(interp)
 	Tcl	interp
     CODE:
+    	if (!findexecutable_called) {
+	    Tcl_FindExecutable("."); /* TODO (?) place here $^X ? */
+	}
 	if (Tcl_Init(interp) != TCL_OK)
 	    croak(interp->result);
 
@@ -289,6 +294,13 @@ void
 Tcl_ResetResult(interp)
 	Tcl	interp
 
+void
+Tcl_FindExecutable(argv)
+	char *	argv
+    CODE:
+    	Tcl_FindExecutable(argv);
+	findexecutable_called = 1;
+
 
 char *
 Tcl_AppendResult(interp, ...)
@@ -324,7 +336,7 @@ Tcl_SplitList(interp, str)
 	    EXTEND(sp, argc);
 	    while (argc--)
 		PUSHs(sv_2mortal(newSVpv(*argv++, 0)));
-	    free((char *) tofree);
+	    ckfree((char *) tofree);
 	}
 
 char *

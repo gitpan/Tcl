@@ -1,7 +1,25 @@
+# before running this script make sure you have 'tclsh' in your path, 
+# and this 'tcl' distribution is required one.
+
+open TCLSH, "tclsh tclcfg.tcl |";
+my $tclcfg = join '', <TCLSH>;
+my %tclcfg = $tclcfg =~ /^(\w+)=(.*?)\n/gm;
+my $tclver = $tclcfg{tcl_version};
+$tclver=~s/\.//;
+
+if ($^O eq 'MSWin32') {
+    $tclcfg{tcl_library} =~ /^(.*)[\\\/]lib[\\\/]/;
+    $tclcfg{libpath} = "-L$1/lib";
+    $tclcfg{incpath} = "-I$1/include";
+}
+
 use ExtUtils::MakeMaker;
+#print <<"#EOS";
 WriteMakefile(
     NAME => "Tcl",
-    VERSION => "b3",
-    LIBS => ["-ltcl -lm"],
-    INC => "-I/usr/local/include -I/usr/include/tcl"
+    VERSION_FROM => 'Tcl.pm',
+    LIBS => ["$tclcfg{libpath} -ltcl$tclver"],
+    INC => "$tclcfg{incpath}",
 );
+
+#EOS
