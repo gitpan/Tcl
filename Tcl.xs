@@ -4,7 +4,7 @@
 #include <tcl.h>
 
 #define Tcl_new(class) Tcl_CreateInterp()
-#define Tcl_result(interp) interp->result
+#define Tcl_result(interp) Tcl_GetStringResult(interp)
 #define Tcl_DESTROY(interp) Tcl_DeleteInterp(interp)
 
 typedef Tcl_Interp *Tcl;
@@ -50,8 +50,11 @@ char **argv;
     sv = POPs;
     PUTBACK;
     
-    rc = SvOK(sv) ? TCL_OK : TCL_ERROR;
-    if (rc == TCL_OK)
+    /* rc = SvOK(sv) ? TCL_OK : TCL_ERROR; <-- elder version. but nothing wrong
+     * for callback to return undef. Hence following: */
+    rc = TCL_OK;
+    
+    if (SvOK(sv))
 	Tcl_SetResult(interp, SvPV(sv, PL_na), TCL_VOLATILE);
     /*
      * If the routine returned undef, it indicates that it has done the
@@ -99,11 +102,12 @@ char *caller;
     int argc;
     char **argv, **tofree;
     
+    char *result = Tcl_GetStringResult(interp);
+
     if (!GIMME)
-	PUSHs(sv_2mortal(newSVpv(interp->result, 0)));
-    else
-    {
-	if (Tcl_SplitList(interp, interp->result, &argc, &argv) != TCL_OK)
+	PUSHs(sv_2mortal(newSVpv(result, 0)));
+    else {
+	if (Tcl_SplitList(interp, result, &argc, &argv) != TCL_OK)
 	    croak("%s called in list context did not return a valid Tcl list",
 		  caller);
 	
@@ -115,6 +119,29 @@ char *caller;
     }
     PUTBACK;
     return;
+}
+
+char *
+var_trace(clientData, interp, name1, name2, flags)
+ClientData clientData;
+Tcl_Interp *interp;
+char *name1;
+char *name2;
+int flags;
+{
+    if (flags & TCL_TRACE_READS) {
+        warn("TCL_TRACE_READS\n");
+    }
+    else if (flags & TCL_TRACE_WRITES) {
+        warn("TCL_TRACE_WRITES\n");
+    }
+    else if (flags & TCL_TRACE_ARRAY) {
+        warn("TCL_TRACE_ARRAY\n");
+    }
+    else if (flags & TCL_TRACE_UNSETS) {
+        warn("TCL_TRACE_UNSETS\n");
+    }
+    return 0;
 }
 
 MODULE = Tcl	PACKAGE = Tcl	PREFIX = Tcl_
@@ -137,7 +164,7 @@ Tcl_Eval(interp, script)
 	PUTBACK;
 	Tcl_ResetResult(interp);
 	if (Tcl_Eval(interp, SvPV(sv_mortalcopy(script), PL_na)) != TCL_OK)
-	    croak(interp->result);
+	    croak(Tcl_GetStringResult(interp));
 	prepare_Tcl_result(interp, "Tcl::Eval");
 	SPAGAIN;
 
@@ -151,7 +178,7 @@ Tcl_EvalFile(interp, filename)
 	PUTBACK;
 	Tcl_ResetResult(interp);
 	if (Tcl_EvalFile(interp, filename) != TCL_OK)
-	    croak(interp->result);
+	    croak(Tcl_GetStringResult(interp));
 	prepare_Tcl_result(interp, "Tcl::EvalFile");
 	SPAGAIN;
 
@@ -165,7 +192,7 @@ Tcl_GlobalEval(interp, script)
 	PUTBACK;
 	Tcl_ResetResult(interp);
 	if (Tcl_GlobalEval(interp, SvPV(sv_mortalcopy(script), PL_na)) != TCL_OK)
-	    croak(interp->result);
+	    croak(Tcl_GetStringResult(interp));
 	prepare_Tcl_result(interp, "Tcl::GlobalEval");
 	SPAGAIN;
 
@@ -188,7 +215,7 @@ Tcl_EvalFileHandle(interp, handle)
 	    {
 		Tcl_ResetResult(interp);
 		if (Tcl_Eval(interp, s) != TCL_OK)
-		    croak(interp->result);
+		    croak(Tcl_GetStringResult(interp));
 		append = 0;
 	    }
 	}
@@ -250,7 +277,7 @@ Tcl_icall(interp, proc, ...)
 	     * Invoke the command's procedure
 	     */
             if ((*cmdinfo.proc)(cmdinfo.clientData,interp,items-1, argv) != TCL_OK)
-		croak(interp->result);
+		croak(Tcl_GetStringResult(interp));
 	    prepare_Tcl_result(interp, "Tcl::call");
         }
         else {
@@ -281,7 +308,7 @@ Tcl_icall(interp, proc, ...)
 	     * Move the interpreter's object result to the string result, 
 	     * then reset the object result.
 	     */
-#if TCL_MAJOR_VERSION>8 || TCL_MAJOR_VERSION>=8 && TCL_MINOR_VERSION>0
+#if TCL_MAJOR_VERSION>8 || TCL_MAJOR_VERSION==8 && TCL_MINOR_VERSION>0
             Tcl_SetResult(interp, Tcl_GetString(Tcl_GetObjResult(interp)),
 		    TCL_VOLATILE);
 #else /* elder Tcl do not have Tcl_GetString */
@@ -296,7 +323,7 @@ Tcl_icall(interp, proc, ...)
         	Tcl_DecrRefCount(objv[i]);
 	    }
             if (result != TCL_OK) {
-       	        croak(interp->result);
+       	        croak(Tcl_GetStringResult(interp));
 	    }
 #if 0
             /* Following lines of code are here in case we could not work
@@ -316,7 +343,7 @@ Tcl_icall(interp, proc, ...)
 		fixme_warned = 1;
 	    }
             if (Tcl_Eval(interp, SvPV(sv_mortalcopy(svline), PL_na)) != TCL_OK) {
-       	        croak(interp->result);
+       	        croak(Tcl_GetStringResult(interp));
 	    }
 #endif /* 0 */
 
@@ -336,7 +363,7 @@ Tcl_Init(interp)
 	    Tcl_FindExecutable("."); /* TODO (?) place here $^X ? */
 	}
 	if (Tcl_Init(interp) != TCL_OK)
-	    croak(interp->result);
+	    croak(Tcl_GetStringResult(interp));
 
 void
 Tcl_CreateCommand(interp,cmdName,cmdProc,clientData=&PL_sv_undef,deleteProc=Nullsv)
@@ -396,7 +423,7 @@ Tcl_AppendResult(interp, ...)
     CODE:
 	for (i = 1; i <= items; i++)
 	    Tcl_AppendResult(interp, SvPV(ST(i), PL_na), NULL);
-	RETVAL = interp->result;
+	RETVAL = Tcl_GetStringResult(interp);
     OUTPUT:
 	RETVAL
 
@@ -474,6 +501,46 @@ Tcl_UnsetVar2(interp, varname1, varname2, flags = 0)
 	RETVAL = Tcl_UnsetVar2(interp, varname1, varname2, flags) == TCL_OK;
     OUTPUT:
 	RETVAL
+
+void
+Tcl_perl_attach(interp, name)
+	Tcl	interp
+	char *	name
+    PPCODE:
+	PUTBACK;
+	/* create Tcl array */
+	Tcl_SetVar2(interp, name, 0, "", 0);
+	/* start trace on it */
+	if (Tcl_TraceVar2(interp, name, 0,
+	    TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS |
+	    TCL_TRACE_ARRAY,
+	    &var_trace,
+	    1 /* clientData*/
+	    ) != TCL_OK) {
+	    croak(Tcl_GetStringResult(interp));
+	}
+	if (Tcl_TraceVar(interp, name,
+	    TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
+	    &var_trace,
+	    2 /* clientData*/
+	    ) != TCL_OK) {
+	    croak(Tcl_GetStringResult(interp));
+	}
+        SPAGAIN;
+       
+void
+Tcl_perl_detach(interp, name)
+	Tcl	interp
+	char *	name
+    PPCODE:
+	PUTBACK;
+	/* stop trace */
+        Tcl_UntraceVar2(interp, name, 0,
+	    TCL_TRACE_READS|TCL_TRACE_WRITES|TCL_TRACE_UNSETS,
+	    &var_trace,
+	    0 /* clientData*/
+	    );
+        SPAGAIN;
 
 MODULE = Tcl		PACKAGE = Tcl::Var
 

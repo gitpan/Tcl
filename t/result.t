@@ -17,7 +17,13 @@ $i->Eval('expr 10 + 30');
 print $i->result == 40 ? "ok 1\n" : "not ok 1\n";
 
 $i->CreateCommand("foo", \&foo);
-$i->Eval('if {[catch foo res]} {puts $res} else {puts "not ok 2"}');
+
+# previously it was assumed that perl when subroutine returns undef it is
+# treated as an exception. This is very uncomfortable from, say, handlers,
+# where undef could be returned if a user is not aware os return value.
+# As long as this was not documented, let's change this, so following test
+# should always return "ok 2"
+$i->Eval('if {[catch foo res]} {puts $res} else {puts "ok 2"}');
 
 $i->ResetResult();
 @qlist = qw(a{b  g\h  j{{k}  l}m{   \}n);

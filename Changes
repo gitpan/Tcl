@@ -1,5 +1,11 @@
 Revision history for Perl extension Tcl.
 
+0.72    20-aug-2003, Vadim Konovalov
+        - now widget object become replaced to widget path in arguments to 'call'
+        - better error handling and diagnostic for calls to Tcl/Tk
+        - now returning undef from handler subroutine do not causes an
+          error in Tcl side. Instead, some error traping should be invented
+
 0.71    03-jul-2003, Vadim Konovalov
         - support Tcl version 8.0.x
 

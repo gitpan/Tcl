@@ -2,7 +2,7 @@ use Tcl;
 
 $| = 1;
 
-print "1..6\n";
+print "1..8\n";
 
 sub foo {
     my $interp = $_[1];
@@ -38,3 +38,26 @@ $five = $i->GetVar2("a", "five");
 print "$ok $five\n";
 
 print defined($i->GetVar("nonesuch")) ? "not ok 6\n" : "ok 6\n";
+
+# some Unicode tests
+if ($]>=5.006 && $i->GetVar("tcl_version")>=8.1
+  && $]<5.008 # TODO -- MUST be implemented and succeed for 5.8.x as well!
+  ) {
+    $i->SetVar("univar","\x{abcd}\x{1234}");
+    if ($i->GetVar("univar") ne "\x{abcd}\x{1234}") {
+	print "not ";
+    }
+    print "ok 7 # Unicode persistence during [SG]etVar\n";
+    my $r;
+    tie $r, Tcl::Var, $i, "perl_r";
+    $r = "\x{abcd}\x{1234}";
+    if ($r ne "\x{abcd}\x{1234}") {
+	print "not ";
+    }
+    print "ok 8 # Unicode persistence for tied variable\n";
+    print $r;
+}
+else {
+    for (7..8) {print "ok $_  # not Unicode-aware Perl or Tcl\n";}
+}
+

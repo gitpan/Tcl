@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.71';
+$Tcl::VERSION = '0.72';
 
 =head1 NAME
 
@@ -318,13 +318,16 @@ sub call {
   # look for CODE and ARRAY refs and substitute them with working code fragments
   my $interp = shift;
   my @args = @_; # this could be optimized
-  for (my $argcnt=0;$argcnt<=$#args;$argcnt++) {
+  for (my $argcnt=0; $argcnt<=$#args; $argcnt++) {
     my $arg = $args[$argcnt];
     if (ref($arg) eq 'CODE') {
       $args[$argcnt] = $interp->create_tcl_sub($arg);
     }
+    elsif (ref($arg) eq 'Tcl::Tk::Widget' || ref($arg) eq 'Tcl::Tk::Widget::MainWindow') {
+      $args[$argcnt] = $$arg; # this trick will help manipulate widgets
+    }
     elsif (ref($arg) eq 'SCALAR') {
-      my $nm = "$arg"; # stringify scalar ...
+      my $nm = "$arg"; # stringify scalar ref ...
       $nm =~ s/\W/_/g;
       unless (exists $anon_refs{$nm}) {
         $anon_refs{$nm}++;
@@ -348,18 +351,19 @@ sub call {
       splice @args, $argcnt+1, 1;
     }
     elsif ((ref($arg) eq 'ARRAY') and (ref($arg->[0]) eq 'CODE')) {
-      die "TODO Implement this! (array ref that means subroutine and its parameters)";
+      $args[$argcnt] = $interp->create_tcl_sub(sub {$arg->[0]->(@$arg[1..$#$arg])});
+      die "Implement this! (array ref that means subroutine and its parameters)";
     }
   }
-  my $res;
-  return $interp->icall(@args);
+  my (@res,$res);
   eval {
-    $res = $interp->icall(@args);
+    @res = $interp->icall(@args);
   };
   if ($@) {
     confess "Tcl error $@ while invoking call\n \"@args\"";
   }
-  return $res;
+  return @res if wantarray;
+  return $res[0];
 }
 
 # create_tcl_sub will create TCL sub that will invoke perl anonymous sub
