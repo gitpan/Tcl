@@ -5,12 +5,18 @@ open TCLSH, "tclsh tclcfg.tcl |";
 my $tclcfg = join '', <TCLSH>;
 my %tclcfg = $tclcfg =~ /^(\w+)=(.*?)\n/gm;
 my $tclver = $tclcfg{tcl_version};
-$tclver=~s/\.//;
+my $libpref = '';
+
+$tclcfg{tcl_library} =~ /^(.*)[\\\/]lib[\\\/]/;
+$tclcfg{libpath} = "-L$1/lib";
+$tclcfg{incpath} = "-I$1/include";
 
 if ($^O eq 'MSWin32') {
-    $tclcfg{tcl_library} =~ /^(.*)[\\\/]lib[\\\/]/;
-    $tclcfg{libpath} = "-L$1/lib";
-    $tclcfg{incpath} = "-I$1/include";
+    $tclver=~s/\.//;
+}
+elsif ($^O eq 'cygwin') {
+    $tclver=~s/\.//;
+    $libpref = 'cyg';
 }
 
 use ExtUtils::MakeMaker;
@@ -18,7 +24,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME => "Tcl",
     VERSION_FROM => 'Tcl.pm',
-    LIBS => ["$tclcfg{libpath} -ltcl$tclver"],
+    LIBS => ["$tclcfg{libpath} -l${libpref}tcl$tclver"],
     INC => "$tclcfg{incpath}",
 );
 

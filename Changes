@@ -1,5 +1,8 @@
 Revision history for Perl extension Tcl.
 
+0.5	25-may-2003, Vadim Konovalov
+	- 'linux' and 'cygwin' supported
+
 0.4	19-may-2003, Vadim Konovalov
 	- changed version system and added module VERSION variable
 	- compatibility changes to support modern versions of Perl and Tcl
