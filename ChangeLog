@@ -1,6 +1,31 @@
+2004-05-09  Konovalov <vkonovalov@peterstar.ru>
+
+	* Changes: brief summary between 0.80 and 0.81
+
+2004-05-07  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Makefile.PL: force Tcl 8.4 as the minimum version
+
+2004-05-06  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs: enhance stubs-based initialization to check for a
+	preloaded Tcl dll as well as for stubs-based dll that is
+	tclkit-based.  This requires maintaining the first created interp
+	through the lifetime of the module.
+
+2004-05-04  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.pm: bump to 0.81 and add commands for icall and invoke.
+	* Tcl.xs: change Tcl::icall to Tcl::invoke and make alternate
+	Tcl::icall the default one.  Tcl::icall will now have command
+	tracing and use Tcl's unknown mechanism, whereas Tcl::invoke does
+	the direct command invocation (where it is an error if the command
+	does not already exist).  This is the better default as Tcl uses
+	unknown for autoload in many cases.
+
 2004-05-03  Vadim Konovalov <vkonovalov@peterstar.ru>
 
-	* Tcl.pm (icall): return of \\'xy' convenience
+	* Tcl.pm (call): return of \\'xy' convenience
 	
 	* Changes: brief summary for version 0.80
 

@@ -7,7 +7,7 @@
  * Copyright (c) 2003-2004, Vadim Konovalov
  * Copyright (c) 2004 ActiveState Corp., a division of Sophos PLC
  *
- * RCS: @(#) $Id: Tcl.xs,v 1.30 2004/04/30 23:03:00 hobbs2 Exp $
+ * RCS: @(#) $Id: Tcl.xs,v 1.32 2004/05/07 04:28:09 hobbs2 Exp $
  */
 
 #define PERL_NO_GET_CONTEXT     /* we want efficiency */
@@ -80,7 +80,18 @@ static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 /*
  * Tcl library handle
  */
-static HMODULE tclHandle      = NULL;
+static HMODULE tclHandle = NULL;
+
+static Tcl_Interp *g_Interp = NULL;
+static int (* tclKitDll_AppInit)(Tcl_Interp *) = NULL;
+
+#else
+
+/*
+ * !USE_TCL_STUBS
+ */
+
+static int (* tclKitDll_AppInit)(Tcl_Interp *) = Tcl_Init;
 
 #endif
 
@@ -253,7 +264,7 @@ NpLoadLibrary(pTHX_ HMODULE *tclHandle)
  *----------------------------------------------------------------------
  */
 
-static void *
+static int
 NpInitialize(pTHX_ SV *X)
 {
     static Tcl_Interp * (* createInterp)() = NULL;
@@ -264,16 +275,23 @@ NpInitialize(pTHX_ SV *X)
      */
     static CONST char *(*initstubs)(Tcl_Interp *, CONST char *, int)
 	= Tcl_InitStubs;
-    Tcl_Interp *npInterp = (Tcl_Interp *) NULL;
 
 #ifdef USE_TCL_STUBS
     /*
      * Determine the libname and version number dynamically
      */
     if (tclHandle == NULL) {
-	if (NpLoadLibrary(aTHX_ &tclHandle) != TCL_OK) {
-	    warn("Failed to load Tcl dll!");
-	    return NULL;
+	/*
+	 * First see if some other part didn't already load Tcl.
+	 */
+	createInterp = (Tcl_Interp * (*)()) dlsym(tclHandle,
+		"Tcl_CreateInterp");
+
+	if (createInterp == NULL) {
+	    if (NpLoadLibrary(aTHX_ &tclHandle) != TCL_OK) {
+		warn("Failed to load Tcl dll!");
+		return TCL_ERROR;
+	    }
 	}
 
 	createInterp = (Tcl_Interp * (*)()) dlsym(tclHandle,
@@ -285,10 +303,13 @@ NpInitialize(pTHX_ SV *X)
 		warn(error);
 	    }
 #endif
-	    return NULL;
+	    return TCL_ERROR;
 	}
 	findExecutable = (void (*)(char *)) dlsym(tclHandle,
 		"Tcl_FindExecutable");
+
+	tclKitDll_AppInit = (int (*)(Tcl_Interp *)) dlsym(tclHandle,
+		"TclKitDll_AppInit");
     }
 #else
     createInterp   = Tcl_CreateInterp;
@@ -306,10 +327,10 @@ NpInitialize(pTHX_ SV *X)
     findExecutable(X && SvPOK(X) ? SvPV_nolen(X) : NULL);
 #endif
 
-    npInterp = createInterp();
-    if (npInterp == (Tcl_Interp *) NULL) {
+    g_Interp = createInterp();
+    if (g_Interp == (Tcl_Interp *) NULL) {
 	warn("Failed to create main Tcl interpreter!");
-	return NULL;
+	return TCL_ERROR;
     }
 
     /*
@@ -317,25 +338,27 @@ NpInitialize(pTHX_ SV *X)
      * calls without grabbing them by symbol out of the dll.
      * This will be Tcl_PkgRequire for non-stubs builds.
      */
-    if (initstubs(npInterp, "8.4", 0) == NULL) {
-	warn("Failed to create initialize Tcl stubs!");
-	return NULL;
+    if (initstubs(g_Interp, "8.4", 0) == NULL) {
+	warn("Failed to initialize Tcl stubs!");
+	return TCL_ERROR;
     }
 
-    if (Tcl_Init(npInterp) != TCL_OK) {
-	CONST84 char *msg = Tcl_GetVar(npInterp, "errorInfo", TCL_GLOBAL_ONLY);
-	warn("Failed to create initialize Tcl:\n%s", msg);
-	return NULL;
+    if (tclKitDll_AppInit == NULL) {
+	tclKitDll_AppInit = Tcl_Init;
+    }
+    if (tclKitDll_AppInit(g_Interp) != TCL_OK) {
+	CONST84 char *msg = Tcl_GetVar(g_Interp, "errorInfo", TCL_GLOBAL_ONLY);
+	warn("Failed to initialize Tcl:\n%s", msg);
+	return TCL_ERROR;
     }
 
     /*
-     * We no longer need this interpreter.  The API hooks remain stable
-     * because they point into the DLL and are not dependent on this interp.
+     * Hold on to the interp handle until finalize, as special
+     * kit-based interps require the first initialized interp to
+     * remain alive.
      */
 
-    Tcl_DeleteInterp((ClientData) npInterp);
-
-    return (void *) tclHandle;
+    return TCL_OK;
 }
 #endif
 
@@ -880,16 +903,14 @@ Tcl_EvalFileHandle(interp, handle)
 	prepare_Tcl_result(aTHX_ interp, "Tcl::EvalFileHandle");
 	SPAGAIN;
 
-#if 1
-
 void
-Tcl_icall(interp, sv, ...)
+Tcl_invoke(interp, sv, ...)
 	Tcl		interp
 	SV *		sv
     PPCODE:
 	{
 	    /*
-	     * This icall invokes the command directly, avoiding
+	     * 'Tcl::invoke' invokes the command directly, avoiding
 	     * command tracing and the ::unknown mechanism.
 	     */
 #define NUM_OBJS 16
@@ -1009,7 +1030,7 @@ Tcl_icall(interp, sv, ...)
 	    if (result != TCL_OK) {
 		croak(Tcl_GetStringResult(interp));
 	    }
-	    prepare_Tcl_result(aTHX_ interp, "Tcl::call");
+	    prepare_Tcl_result(aTHX_ interp, "Tcl::invoke");
 
 	    if (objv != baseobjv) {
 		Safefree(objv);
@@ -1018,7 +1039,6 @@ Tcl_icall(interp, sv, ...)
 #undef NUM_OBJS
 	}
 
-#else
 
 void
 Tcl_icall(interp, sv, ...)
@@ -1027,7 +1047,7 @@ Tcl_icall(interp, sv, ...)
     PPCODE:
 	{
 	    /*
-	     * This icall passes the args to Tcl to invoke.  It will do
+	     * 'Tcl::icall' passes the args to Tcl to invoke.  It will do
 	     * command tracing and call ::unknown mechanism for unrecognized
 	     * commands.
 	     */
@@ -1077,7 +1097,7 @@ Tcl_icall(interp, sv, ...)
 	    if (result != TCL_OK) {
 		croak(Tcl_GetStringResult(interp));
 	    }
-	    prepare_Tcl_result(aTHX_ interp, "Tcl::call");
+	    prepare_Tcl_result(aTHX_ interp, "Tcl::icall");
 
 	    if (objv != baseobjv) {
 		Safefree(objv);
@@ -1086,7 +1106,6 @@ Tcl_icall(interp, sv, ...)
 #undef NUM_OBJS
 	}
 
-#endif
 
 void
 Tcl_DESTROY(interp)
@@ -1129,6 +1148,12 @@ Tcl__Finalize(interp=NULL)
 	    hv_undef(hvInterps);
 	    hvInterps = NULL;
 	}
+#ifdef USE_TCL_STUBS
+	if (g_Interp) {
+	    Tcl_DeleteInterp(g_Interp);
+	    g_Interp = NULL;
+	}
+#endif
 	Tcl_Finalize();
 	initialized = 0;
 #ifdef USE_TCL_STUBS
@@ -1144,7 +1169,7 @@ Tcl_Init(interp)
 	Tcl	interp
     CODE:
 	if (!initialized) { return; }
-	if (Tcl_Init(interp) != TCL_OK) {
+	if (tclKitDll_AppInit(interp) != TCL_OK) {
 	    croak(Tcl_GetStringResult(interp));
 	}
 	Tcl_CreateObjCommand(interp, "::perl::Eval", Tcl_EvalInPerl,
@@ -1442,7 +1467,7 @@ BOOT:
     {
 	SV *x = GvSV(gv_fetchpv("\030", TRUE, SVt_PV)); /* $^X */
 #ifdef USE_TCL_STUBS
-	if (NpInitialize(aTHX_ x) == NULL) {
+	if (NpInitialize(aTHX_ x) == TCL_ERROR) {
 	    croak("Unable to initialize Tcl");
 	}
 #else
