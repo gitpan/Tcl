@@ -50,7 +50,7 @@ char **argv;
     
     rc = SvOK(sv) ? TCL_OK : TCL_ERROR;
     if (rc == TCL_OK)
-	Tcl_SetResult(interp, SvPV(sv, na), TCL_VOLATILE);
+	Tcl_SetResult(interp, SvPV(sv, PL_na), TCL_VOLATILE);
     /*
      * If the routine returned undef, it indicates that it has done the
      * SetResult itself and that we should return TCL_ERROR
@@ -134,7 +134,7 @@ Tcl_Eval(interp, script)
 	(void) sv_2mortal(SvREFCNT_inc(interpsv));
 	PUTBACK;
 	Tcl_ResetResult(interp);
-	if (Tcl_Eval(interp, SvPV(sv_mortalcopy(script), na)) != TCL_OK)
+	if (Tcl_Eval(interp, SvPV(sv_mortalcopy(script), PL_na)) != TCL_OK)
 	    croak(interp->result);
 	prepare_Tcl_result(interp, "Tcl::Eval");
 	SPAGAIN;
@@ -162,7 +162,7 @@ Tcl_GlobalEval(interp, script)
 	(void) sv_2mortal(SvREFCNT_inc(interpsv));
 	PUTBACK;
 	Tcl_ResetResult(interp);
-	if (Tcl_GlobalEval(interp, SvPV(sv_mortalcopy(script), na)) != TCL_OK)
+	if (Tcl_GlobalEval(interp, SvPV(sv_mortalcopy(script), PL_na)) != TCL_OK)
 	    croak(interp->result);
 	prepare_Tcl_result(interp, "Tcl::GlobalEval");
 	SPAGAIN;
@@ -222,7 +222,7 @@ Tcl_call(interp, proc, ...)
 	     * its arguments more than once.
 	     */
 	    proc = sv_mortalcopy(*++SP);
-	    argv[i] = SvPV(proc, na);
+	    argv[i] = SvPV(proc, PL_na);
 	}
 	argv[items - 1] = (char *) 0;
 	if (!Tcl_GetCommandInfo(interp, argv[0], &cmdinfo))
@@ -247,7 +247,7 @@ Tcl_Init(interp)
 	    croak(interp->result);
 
 void
-Tcl_CreateCommand(interp,cmdName,cmdProc,clientData=&sv_undef,deleteProc=Nullsv)
+Tcl_CreateCommand(interp,cmdName,cmdProc,clientData=&PL_sv_undef,deleteProc=Nullsv)
 	Tcl	interp
 	char *	cmdName
 	SV *	cmdProc
@@ -268,7 +268,7 @@ Tcl_CreateCommand(interp,cmdName,cmdProc,clientData=&sv_undef,deleteProc=Nullsv)
 	    Tcl_CreateCommand(interp, cmdName, Tcl_PerlCallWrapper,
 			      (ClientData) av, Tcl_PerlCallDeleteProc);
 	}
-	ST(0) = &sv_yes;
+	ST(0) = &PL_sv_yes;
 	XSRETURN(1);
 
 void
@@ -296,7 +296,7 @@ Tcl_AppendResult(interp, ...)
 	int	i = NO_INIT
     CODE:
 	for (i = 1; i <= items; i++)
-	    Tcl_AppendResult(interp, SvPV(ST(i), na), NULL);
+	    Tcl_AppendResult(interp, SvPV(ST(i), PL_na), NULL);
 	RETVAL = interp->result;
     OUTPUT:
 	RETVAL
@@ -403,7 +403,7 @@ FETCH(av, key = NULL)
 	    croak("bad object passed to Tcl::Var::FETCH");
 	if (AvFILL(av) == 2)
 	    flags = (int) SvIV(*av_fetch(av, 2, FALSE));
-	varname1 = SvPV(*av_fetch(av, 1, FALSE), na);
+	varname1 = SvPV(*av_fetch(av, 1, FALSE), PL_na);
 	RETVAL = key ? Tcl_GetVar2(interp, varname1, key, flags)
 		     : Tcl_GetVar(interp, varname1, flags);
     OUTPUT:
@@ -435,7 +435,7 @@ STORE(av, str1, str2 = NULL)
 	    croak("bad object passed to Tcl::Var::STORE");
 	if (AvFILL(av) == 2)
 	    flags = (int) SvIV(*av_fetch(av, 2, FALSE));
-	varname1 = SvPV(*av_fetch(av, 1, FALSE), na);
+	varname1 = SvPV(*av_fetch(av, 1, FALSE), PL_na);
 	/*
 	 * hash stores have key str1 and value str2
 	 * scalar ones just use value str1

@@ -1,3 +1,13 @@
+Tcl beta 3 is a minor update for compatability with perl 5.6.0.
+
+Use Tcl-b2 for earlier releases of perl.
+
+Regards,
+Andrew Brown
+
+andy75@hotmail.com
+
+================================================================================
 	    Tcl extension module (release beta2) for Perl5
 
 	      Copyright (c) 1994-1997, Malcolm Beattie
