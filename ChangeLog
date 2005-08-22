@@ -1,9 +1,60 @@
+2005-08-23  Vadim Konovalov
+
+	* MANIFEST: mention t/unicode.t
+	* Changes: brief summary for 0.88
+	* CPAN release 0.88
+
+2005-08-16  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.xs (SvFromTclObj, TclObjFromSv): Convert NULLs to utf-8
+	\xC0\x80 to/from Tcl as some extensions (eg Tk) call non-counted
+	string APIs.
+	(Tcl_result, Tcl_AppendResult): use Sv <> Tcl_Obj bridge functions.
+	(Tcl_Eval, Tcl_GlobalEval): allow optional flags arg to Tcl::Eval,
+	removing Tcl::GlobalEval.  Add Tcl::EVAL_GLOBAL and
+	Tcl::EVAL_DIRECT constants.
+	
+	* Tcl.pm: note removal of Tcl::GlobalEval, updated Tcl::Eval
+
+	* t/unicode.t (new): extended unicode/null passing tests
+
+	* t/var.t: replace GlobalEval with Eval using flags.
+
+	* Makefile.PL: HP-UX uses .sl libnames
+
+2005-08-15  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.pm: doc cleanup
+
+	* Tcl.xs: squelch a few compile warnings
+
+	* t/createcmd.t: perl 5.8.0 finalization order is wonky, so don't
+	expect the implicit Tcl finalization callbacks.
+
+2005-07-31  Vadim Konovalov
+
+	* Makefile.PL: darwin config touches from Tom Wyant <WYANT@cpan.org>
+	* Tcl.pm: tiny 'authors' change
+
+2005-07-18  Vadim Konovalov
+
+	* Tcl.pm: documentation improvements: explain installation techniques;
+	explain ::perl::Eval from Tcl side
+	bump to 0.88
+	create hook to optional reading of Tcl.cfg
+	* Changes: start 0.88 history
+	* TODO: file removed
+	* Manifest: document TODO removal and adding of create-moveable-dist.pl
+
+2005-02-02  Vadim Konovalov <vadimk@vkonovalov.ru>
+
+	* Changes: prepare for CPAN release
+
 2005-01-30  Vadim Konovalov <vadimk@vkonovalov.ru>
 
 	* Tcl.pm: automatic cleanup on widget deletion
 	bump to 0.87
 	* Changes: start 0.87 history
-
 
 2005-01-23  Vadim Konovalov <vadimk@vkonovalov.ru>
 
