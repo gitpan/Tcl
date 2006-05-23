@@ -7,7 +7,7 @@
  * Copyright (c) 2003-2004, Vadim Konovalov
  * Copyright (c) 2004 ActiveState Corp., a division of Sophos PLC
  *
- * RCS: @(#) $Id: Tcl.xs,v 1.39 2005/08/16 21:57:18 hobbs2 Exp $
+ * RCS: @(#) $Id: Tcl.xs,v 1.43 2006/05/23 00:14:56 hobbs2 Exp $
  */
 
 #define PERL_NO_GET_CONTEXT     /* we want efficiency */
@@ -42,6 +42,8 @@
 #ifndef TCL_LIB_FILE
 # ifdef WIN32
 #   define TCL_LIB_FILE "tcl84.dll"
+# elif defined(__APPLE__)
+#   define TCL_LIB_FILE "Tcl"
 # elif defined(__hpux)
 #   define TCL_LIB_FILE "libtcl8.4.sl"
 # else
@@ -59,8 +61,11 @@
 #endif
 static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 
-#ifdef WIN32
+#if defined(WIN32)
 
+#ifndef HMODULE
+#define HMODULE void *
+#endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef WIN32_LEAN_AND_MEAN
@@ -70,9 +75,19 @@ static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 	(proc = (type) GetProcAddress((HINSTANCE) handle, symbol))
 #define snprintf _snprintf
 
-#else
+#elif defined(__APPLE__)
 
-#ifdef __hpux
+#include <CoreServices/CoreServices.h>
+
+static short DOMAINS[] = {
+    kUserDomain,
+    kLocalDomain,
+    kNetworkDomain,
+    kSystemDomain
+};
+static const int DOMAINS_LEN = sizeof(DOMAINS)/sizeof(DOMAINS[0]);
+
+#elif defined(__hpux)
 /* HPUX requires shl_* routines */
 #include <dl.h>
 #define HMODULE shl_t
@@ -82,7 +97,9 @@ static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 #define DLSYM(handle, symbol, type, proc) \
 	if (shl_findsym(&handle, symbol, (short) TYPE_PROCEDURE, \
 		(void *) &proc) != 0) { proc = NULL; }
-#else
+#endif
+
+#ifndef HMODULE
 #include <dlfcn.h>
 #define HMODULE void *
 #define DLSYM(handle, symbol, type, proc) \
@@ -91,8 +108,6 @@ static char defaultLibraryDir[sizeof(LIB_RUNTIME_DIR)+200] = LIB_RUNTIME_DIR;
 
 #ifndef MAX_PATH
 #define MAX_PATH 1024
-#endif
-
 #endif
 
 /*
@@ -118,6 +133,7 @@ typedef AV *Tcl__Var;
 
 /*
  * Variables denoting the Tcl object types defined in the core.
+ * These may not exist - guard against NULL result.
  */
 
 static Tcl_ObjType *tclBooleanTypePtr = NULL;
@@ -163,23 +179,53 @@ static HV *hvInterps = NULL;
 static int
 NpLoadLibrary(pTHX_ HMODULE *tclHandle, char *dllFilename, int dllFilenameSize)
 {
-    char *envdll, libname[MAX_PATH];
+    char *dl_path, libname[MAX_PATH];
     HMODULE handle = (HMODULE) NULL;
 
     /*
      * Try a user-supplied Tcl dll to start with.
      * If the var is supplied, force this to be correct or error out.
      */
-    envdll = getenv("PERL_TCL_DLL");
-    if (envdll != NULL) {
-	handle = dlopen(envdll, RTLD_NOW | RTLD_GLOBAL);
+    dl_path = SvPV_nolen(get_sv("Tcl::DL_PATH", TRUE));
+    if (dl_path && *dl_path) {
+	handle = dlopen(dl_path, RTLD_NOW | RTLD_GLOBAL);
 	if (handle) {
-	    memcpy(libname, envdll, MAX_PATH);
+	    memcpy(libname, dl_path, MAX_PATH);
 	} else {
-	    warn("NpLoadLibrary: could not find PERL_TCL_DLL at '%s'", envdll);
+	    warn("NpLoadLibrary: could not find Tcl library at '%s'", dl_path);
 	    return TCL_ERROR;
 	}
     }
+
+#ifdef __APPLE__
+    if (!handle) {
+      OSErr oserr;
+      FSRef ref;
+      int i;
+
+      for (i = 0; i < DOMAINS_LEN; i++) {
+	oserr = FSFindFolder(DOMAINS[i], kFrameworksFolderType,
+			     kDontCreateFolder, &ref);
+	if (oserr != noErr) {
+	  continue;
+	}
+	oserr = FSRefMakePath(&ref, (UInt8*)libname, sizeof(libname));
+	if (oserr != noErr) {
+	  continue;
+	}
+	/*
+	 * This should really just try loading Tcl.framework/Tcl, but will
+	 * fail if the user has requested an alternate TCL_LIB_FILE.
+	 */
+        strcat(libname, "/Tcl.framework/" TCL_LIB_FILE);
+	/* printf("Try \"%s\"\n", libname); */
+	handle = dlopen(libname, RTLD_NOW | RTLD_GLOBAL);
+        if (handle) {
+            break;
+	}
+      }
+    }
+#endif
 
     if (!handle) {
 	char *pos;
@@ -480,7 +526,7 @@ SvFromTclObj(pTHX_ Tcl_Obj *objPtr)
 	}
     }
     else if (objPtr->typePtr == tclByteArrayTypePtr) {
-	str = Tcl_GetByteArrayFromObj(objPtr, &len);
+	str = (char *) Tcl_GetByteArrayFromObj(objPtr, &len);
 	sv = newSVpvn(str, len);
     }
     else if (objPtr->typePtr == tclListTypePtr) {
@@ -637,7 +683,7 @@ TclObjFromSv(pTHX_ SV *sv)
 	    }
 	    objPtr = Tcl_NewStringObj(str, length);
 	} else {
-	    objPtr = Tcl_NewByteArrayObj(str, length);
+	    objPtr = Tcl_NewByteArrayObj((unsigned char *)str, length);
 	}
     }
     else if (SvNOK(sv)) {
@@ -674,7 +720,7 @@ TclObjFromSv(pTHX_ SV *sv)
 	     */
 	    objPtr = Tcl_NewStringObj(str, length);
 	} else {
-	    objPtr = Tcl_NewByteArrayObj(str, length);
+	    objPtr = Tcl_NewByteArrayObj((unsigned char *) str, length);
 	}
     }
 

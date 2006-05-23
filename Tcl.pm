@@ -1,7 +1,7 @@
 package Tcl;
 use Carp;
 
-$Tcl::VERSION = '0.88';
+$Tcl::VERSION = '0.89';
 $Tcl::STACK_TRACE = 1;
 
 =head1 NAME
@@ -401,6 +401,11 @@ use vars qw(@ISA);
 # shared libraries
 $Tcl::config::tcl_pm_path = [__FILE__=~/^(.*)Tcl\.pm$/i]->[0];
 do "$Tcl::config::tcl_pm_path/Tcl.cfg" if -f "$Tcl::config::tcl_pm_path/Tcl.cfg";
+
+our $DL_PATH;
+unless (defined $DL_PATH) {
+    $DL_PATH = $ENV{PERL_TCL_DL_PATH} || $ENV{PERL_TCL_DLL} || "";
+}
 
 Tcl->bootstrap($Tcl::VERSION);
 
