@@ -1,7 +1,6 @@
 package Tcl;
-use Carp;
 
-$Tcl::VERSION = '0.89';
+$Tcl::VERSION = '0.90';
 $Tcl::STACK_TRACE = 1;
 
 =head1 NAME
@@ -343,37 +342,11 @@ During compiling Tcl Perl module, Tcl/Tk could be statically linked into
 module's shared library and all other files zipped into a single archive, so
 each file extracted when needed.
 
-=back
-
-Some global variables within $Tcl::config:: namespace are used to make
-such installations possible.
-
-=head3 First method
-
-=head3 Second method
-
-To use second approach, desired set of Tcl/Tk binaries should be prepared
-in a single directory. Mostly these files could be files from existing Tcl/Tk
-installation.
-
-Use C<create-moveable-dist.pl> script to create proper configuration this way.
-
-From inmplementation side of view, following things are done in this way:
-
-=over
-
-=item * Entire Tcl/Tk directory is copied into C<blib/lib>
-
-=item * Tcl.cfg file is created at the same dir where Tcl.pm is placed; this
-file contain some configuration and a code to initially load Tcl shared library.
-
-=back 
-
-=head3 Third method
-
 To link Tcl/Tk binaries, prepare their libraries and then instruct Makefile.PL
 to use these libraries in a link stage.
 (TODO provide better detailed description) 
+
+=back
 
 =head1 AUTHORS
 
@@ -392,22 +365,37 @@ See http://www.perl.com/perl/misc/Artistic.html
 =cut
 
 use strict;
-use DynaLoader;
-use vars qw(@ISA);
-@ISA = qw(DynaLoader);
-
-# consideration for moveable configuration of tcl/tk
-# This is done before bootstraping, to make possible of searching of correct
-# shared libraries
-$Tcl::config::tcl_pm_path = [__FILE__=~/^(.*)Tcl\.pm$/i]->[0];
-do "$Tcl::config::tcl_pm_path/Tcl.cfg" if -f "$Tcl::config::tcl_pm_path/Tcl.cfg";
 
 our $DL_PATH;
 unless (defined $DL_PATH) {
     $DL_PATH = $ENV{PERL_TCL_DL_PATH} || $ENV{PERL_TCL_DLL} || "";
 }
 
-Tcl->bootstrap($Tcl::VERSION);
+my $path;
+if ($^O eq 'darwin') {
+ # Darwin 7.9 (OS X 10.3) requires the path of the executable be prepended
+ # for #! scripts to operate properly (avoids RegisterProcess error).
+ require Config;
+ unless (grep { $_ eq $Config::Config{binexp} } split $Config::Config{path_sep}, $ENV{PATH}) {
+   $path = join $Config::Config{path_sep}, $Config::Config{binexp}, $ENV{PATH};
+ }
+}
+
+require XSLoader;
+
+{
+    local $ENV{PATH} = $path if $path;
+    XSLoader::load('Tcl', $Tcl::VERSION);
+}
+
+sub new {
+    my $int = _new(@_);
+    return $int;
+}
+
+eval {
+    require "Tclaux.pm";
+};
 
 END {
     Tcl::_Finalize();
@@ -424,7 +412,7 @@ my %anon_refs;
 
 # %widget_refs is an array to hold refs that were created when working with
 # widget the point is - it's not dangerous to delete more than needed, because
-# those # will be re-created at the very next time they needed.
+# those will be re-created at the very next time they needed.
 # however when widget goes away, it is good to delete anything that comes
 # into mind with that widget
 my %widget_refs;
@@ -544,16 +532,18 @@ sub call {
 	my @res;
 	eval { @res = $interp->icall(@args); };
 	if ($@) {
-	    confess "Tcl error '$@' while invoking array result call:\n" .
-		"\t\"@args\"";
+	    require Carp;
+	    Carp::confess ("Tcl error '$@' while invoking array result call:\n" .
+		"\t\"@args\"");
 	}
 	return @res;
     } else {
 	my $res;
 	eval { $res = $interp->icall(@args); };
 	if ($@) {
-	    confess "Tcl error '$@' while invoking scalar result call:\n" .
-		"\t\"@args\"";
+	    require Carp;
+	    Carp::confess ("Tcl error '$@' while invoking scalar result call:\n" .
+		"\t\"@args\"");
 	}
 	return $res;
     }
@@ -644,16 +634,20 @@ package Tcl::Var;
 sub TIESCALAR {
     my $class = shift;
     my @objdata = @_;
-    Carp::croak 'Usage: tie $s, Tcl::Var, $interp, $varname [, $flags]'
-	unless @_ == 2 || @_ == 3;
+    unless (@_ == 2 || @_ == 3) {
+	require Carp;
+	Carp::croak('Usage: tie $s, Tcl::Var, $interp, $varname [, $flags]');
+    };
     bless \@objdata, $class;
 }
 
 sub TIEHASH {
     my $class = shift;
     my @objdata = @_;
-    Carp::croak 'Usage: tie %hash, Tcl::Var, $interp, $varname [, $flags]'
-	unless @_ == 2 || @_ == 3;
+    unless (@_ == 2 || @_ == 3) {
+	require Carp;
+	Carp::croak('Usage: tie %hash, Tcl::Var, $interp, $varname [, $flags]');
+    }
     bless \@objdata, $class;
 }
 
@@ -693,8 +687,10 @@ sub CLEAR {
 }
 sub DELETE {
     my $obj = shift;
-    Carp::croak "STORE Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
-	unless @{$obj} == 2 || @{$obj} == 3;
+    unless (@{$obj} == 2 || @{$obj} == 3) {
+	require Carp;
+	Carp::croak("STORE Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)");
+    }
     my ($interp, $varname, $flags) = @{$obj};
     my ($str1) = @_;
     $interp->invoke("unset", "$varname($str1)"); # protect strings?
@@ -713,7 +709,7 @@ sub DESTROY {
 #
 #sub STORE {
 #    my $obj = shift;
-#    Carp::croak "STORE Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
+#    croak "STORE Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
 #	unless @{$obj} == 2 || @{$obj} == 3;
 #    my ($interp, $varname, $flags) = @{$obj};
 #    my ($str1, $str2) = @_;
@@ -726,7 +722,7 @@ sub DESTROY {
 #
 #sub FETCH {
 #    my $obj = shift;
-#    Carp::croak "FETCH Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
+#    croak "FETCH Usage: objdata @{$obj} $#{$obj}, not 2 or 3 (@_)"
 #	unless @{$obj} == 2 || @{$obj} == 3;
 #    my ($interp, $varname, $flags) = @{$obj};
 #    my $key = shift;
@@ -738,4 +734,4 @@ sub DESTROY {
 #}
 
 1;
-__END__
+

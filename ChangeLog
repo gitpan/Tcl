@@ -1,4 +1,59 @@
-2006-09-23  Vadim Konovalov
+2006-11-11  Vadim Konovalov
+
+	* Tcl.pm: remove mention of create-moveable-dist.pl
+	* Makefile.PL: --no-usestubs was actually ignore; fix this
+	* Manifest: remove mention of create-moveable-dist.pl
+	CPAN release
+
+2006-10-03  Vadim Konovalov
+
+	* Tcl.xs: new renamed to _new;
+	for Win32+HAVE_TKINIT+!USE_STUBS minimal DllMain introduced
+	HAVE_DDEINIT, HAVE_BLTINIT introduced
+	new Tcl C interface for Tcl_SetPreInitScript, TclpInitLibraryPath,
+	Tcl_SetDefaultEncodingDir, Tcl_GetDefaultEncodingDir, Tcl_GetEncoding
+	remove never-working Tcl_perl_detach, Tcl_perl_attach
+	* Tcl.pm: replace DynaLoader with XSLoader
+	remove bogus insecure C<do"$Tcl::config::tcl_pm_path/Tcl.cfg">
+	insert fresh "use Tclaux;" bootstrap helper
+	"use Carp;" only when "require"-ed
+	sub new - direct call to XS variant _new
+	version now is 0.90
+
+2006-08-23  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.pm: replace 'use Config' with less invasive 'require Config'.
+
+2006-08-13  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Tcl.pm: Add exe path for Darwin. OS X 10.3 requires it for #!
+	scripts to operate properly (avoids RegisterProcess error).
+
+	* tcl-core/darwin-universal/libtclstub8.4.a: AT 266625 update
+
+2006-07-15  Vadim Konovalov
+
+	* Tcl.xs: support statical inclusion of some extensions (Tk, Tix, etc)
+	so when Makefile.PL invoked with --define="-DHAVE_TKINIT"
+
+2006-05-31  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* Makefile.PL: add -framework Carbon for default OS X build
+
+2006-05-25  Jeff Hobbs  <jeffh@ActiveState.com>
+
+	* tcl-core/aix/libtclstub8.4.a:          Additional platform stubs
+	* tcl-core/hpux-ia64/libtclstub8.4.a:    libraries
+	* tcl-core/linux-ia64/libtclstub8.4.a:
+	* tcl-core/linux-x86_64/libtclstub8.4.a:
+
+	* Makefile.PL: Enhanced to allow no argument invocations to
+	attempt to build from provided stubs libraries.  No longer
+	requires --library --include options on most platforms.
+	Run ranlib on darwin stublib to work around ranlib bug.
+	(MY::libscan): make override .pl match case insensitive.
+
+2006-05-23  Vadim Konovalov
 
 	* Changes: brief summary for 0.89
 	* Tcl.pm: version 0.89

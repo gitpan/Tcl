@@ -7,7 +7,7 @@
  * Copyright (c) 2003-2004, Vadim Konovalov
  * Copyright (c) 2004 ActiveState Corp., a division of Sophos PLC
  *
- * RCS: @(#) $Id: Tcl.xs,v 1.43 2006/05/23 00:14:56 hobbs2 Exp $
+ * RCS: @(#) $Id: Tcl.xs,v 1.46 2006/11/03 17:35:56 vkonovalov Exp $
  */
 
 #define PERL_NO_GET_CONTEXT     /* we want efficiency */
@@ -126,10 +126,23 @@ static int (* tclKit_AppInit)(Tcl_Interp *) = NULL;
 
 static int (* tclKit_AppInit)(Tcl_Interp *) = Tcl_Init;
 
+#if defined(HAVE_TKINIT) && defined(WIN32)
+HANDLE _hinst = 0;
+BOOL APIENTRY
+DllMain(HINSTANCE hInst, DWORD reason, LPVOID reserved) {
+    _hinst = hInst;
+    return TRUE;
+}
+#endif
+
 #endif
 
 typedef Tcl_Interp *Tcl;
 typedef AV *Tcl__Var;
+
+#ifdef HAVE_BLTINIT
+extern Tcl_PackageInitProc Blt_Init, Blt_SafeInit;
+#endif
 
 /*
  * Variables denoting the Tcl object types defined in the core.
@@ -943,7 +956,7 @@ var_trace(ClientData clientData, Tcl_Interp *interp,
 MODULE = Tcl	PACKAGE = Tcl	PREFIX = Tcl_
 
 SV *
-Tcl_new(class = "Tcl")
+Tcl__new(class = "Tcl")
 	char *	class
     CODE:
 	RETVAL = newSV(0);
@@ -997,6 +1010,51 @@ Tcl_Eval(interp, script, flags = 0)
 	}
 	prepare_Tcl_result(aTHX_ interp, "Tcl::Eval");
 	SPAGAIN;
+
+#ifdef HAVE_TKINIT
+
+char*
+Tcl_SetPreInitScript(script)
+	char *	script
+    CODE:
+	if (!initialized) { return; }
+	RETVAL = TclSetPreInitScript(script);
+    OUTPUT:
+	RETVAL
+
+char*
+TclpInitLibraryPath(path)
+	char *	path
+    CODE:
+	if (!initialized) { return; }
+	RETVAL = TclpInitLibraryPath(path);
+    OUTPUT:
+	RETVAL
+
+void
+Tcl_SetDefaultEncodingDir(script)
+	char *	script
+    PPCODE:
+	if (!initialized) { return; }
+	Tcl_SetDefaultEncodingDir(script);
+
+char*
+Tcl_GetDefaultEncodingDir(void)
+    CODE:
+	if (!initialized) { return; }
+	RETVAL = Tcl_GetDefaultEncodingDir();
+    OUTPUT:
+	RETVAL
+
+void*
+Tcl_GetEncoding(interp, enc)
+	Tcl	interp
+	char *enc
+    PPCODE:
+	if (!initialized) { return; }
+	Tcl_GetEncoding(interp,enc);
+
+#endif /* HAVE_TKINIT */
 
 void
 Tcl_EvalFile(interp, filename)
@@ -1315,6 +1373,82 @@ Tcl_Init(interp)
 	Tcl_CreateObjCommand(interp, "::perl::Eval", Tcl_EvalInPerl,
 		(ClientData) NULL, NULL);
 
+#ifdef HAVE_DDEINIT
+
+void
+Dde_Init(interp)
+	Tcl	interp
+    CODE:
+	Dde_Init(interp);
+
+#endif
+
+#ifdef HAVE_TKINIT
+
+void
+Tk_Init(interp)
+	Tcl	interp
+    CODE:
+	Tk_Init(interp);
+
+#endif
+
+#ifdef HAVE_TIXINIT
+
+void
+Tix_Init(interp)
+	Tcl	interp
+    CODE:
+	Tix_Init(interp);
+
+#endif
+
+#ifdef HAVE_BLTINIT
+
+void
+Blt_Init(interp)
+	Tcl	interp
+    CODE:
+	Blt_Init(interp);
+
+void
+Blt_StaticPackage(interp)
+	Tcl	interp
+    PPCODE:
+	Tcl_StaticPackage(interp, "BLT", Blt_Init, Blt_SafeInit);
+
+#endif
+
+#ifdef HAVE_MEMCHANINIT
+
+void
+Memchan_Init(interp)
+	Tcl	interp
+    CODE:
+	Memchan_Init(interp);
+
+#endif
+
+#ifdef HAVE_TRFINIT
+
+void
+Trf_Init(interp)
+	Tcl	interp
+    CODE:
+	Trf_Init(interp);
+
+#endif
+
+#ifdef HAVE_VFSINIT
+
+void
+Vfs_Init(interp)
+	Tcl	interp
+    CODE:
+	Vfs_Init(interp);
+
+#endif
+
 int
 Tcl_DoOneEvent(interp, flags)
 	Tcl	interp
@@ -1483,50 +1617,6 @@ Tcl_UnsetVar2(interp, varname1, varname2, flags = 0)
     OUTPUT:
 	RETVAL
 
-void
-Tcl_perl_attach(interp, name)
-	Tcl	interp
-	char *	name
-    PPCODE:
-	if (!initialized) { return; }
-	PUTBACK;
-	/* create Tcl array */
-	Tcl_SetVar2(interp, name, NULL, "", 0);
-	/* start trace on it */
-	if (Tcl_TraceVar2(interp, name, 0,
-	    TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS |
-	    TCL_TRACE_ARRAY,
-	    &var_trace,
-	    NULL /* clientData*/
-	    ) != TCL_OK)
-	{
-	    croak(Tcl_GetStringResult(interp));
-	}
-	if (Tcl_TraceVar(interp, name,
-	    TCL_TRACE_READS | TCL_TRACE_WRITES | TCL_TRACE_UNSETS,
-	    &var_trace,
-	    NULL /* clientData*/
-	    ) != TCL_OK)
-	{
-	    croak(Tcl_GetStringResult(interp));
-	}
-        SPAGAIN;
-
-void
-Tcl_perl_detach(interp, name)
-	Tcl	interp
-	char *	name
-    PPCODE:
-	if (!initialized) { return; }
-	PUTBACK;
-	/* stop trace */
-        Tcl_UntraceVar2(interp, name, 0,
-	    TCL_TRACE_READS|TCL_TRACE_WRITES|TCL_TRACE_UNSETS,
-	    &var_trace,
-	    NULL /* clientData*/
-	    );
-        SPAGAIN;
-
 
 MODULE = Tcl		PACKAGE = Tcl::List
 
@@ -1640,6 +1730,16 @@ BOOT:
 #else
 	/* Ideally this would be passed the dll instance location. */
 	Tcl_FindExecutable(x && SvPOK(x) ? SvPV_nolen(x) : NULL);
+#if defined(HAVE_TKINIT) && defined(WIN32)
+    	/* HAVE_TKINIT means we're linking Tk statically with tcl.dll
+	 * so we need to perform same initialization as in 
+	 * tk/win/tkWin32Dll.c
+	 * (unless all this goes statically into perl.dll; in this case
+	 * handle to perl.dll should be substituted TODO)
+	 *  -- VKON
+	 */
+	TkWinSetHINSTANCE(_hinst);
+#endif
 #endif
 	initialized = 1;
 	hvInterps = newHV();
