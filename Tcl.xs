@@ -7,7 +7,7 @@
  * Copyright (c) 2003-2004, Vadim Konovalov
  * Copyright (c) 2004 ActiveState Corp., a division of Sophos PLC
  *
- * RCS: @(#) $Id: Tcl.xs,v 1.47 2007/05/11 18:07:49 vkonovalov Exp $
+ * RCS: @(#) $Id: Tcl.xs,v 1.48 2008/01/05 00:30:01 hobbs2 Exp $
  */
 
 #define PERL_NO_GET_CONTEXT     /* we want efficiency */
@@ -205,6 +205,12 @@ NpLoadLibrary(pTHX_ HMODULE *tclHandle, char *dllFilename, int dllFilenameSize)
 	if (handle) {
 	    memcpy(libname, dl_path, MAX_PATH);
 	} else {
+#if !defined(WIN32) && !defined(__hpux)
+	    char *error = dlerror();
+	    if (error != NULL) {
+		warn(error);
+	    }
+#endif
 	    warn("NpLoadLibrary: could not find Tcl library at '%s'", dl_path);
 	    return TCL_ERROR;
 	}
