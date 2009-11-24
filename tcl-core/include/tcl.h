@@ -13,7 +13,7 @@
  * See the file "license.terms" for information on usage and redistribution
  * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
  *
- * RCS: @(#) $Id: tcl.h,v 1.1 2006/05/23 00:14:56 hobbs2 Exp $
+ * RCS: @(#) $Id$
  */
 
 #ifndef _TCL

@@ -25,9 +25,12 @@ my $arch;
 my $stub = "tclstub8.4";
 
 # These need updating as more platforms are added to tcl-core/ area
-if ($^O eq "MSWin32") {
+if ($^O eq "aix") {
+    $arch = "aix";
+} elsif ($^O eq "MSWin32") {
     $stub = "tclstub84";
     $arch = "win32-x86" if ($Config{archname} =~ /-x86-/);
+    $arch = "win32-x64" if ($Config{archname} =~ /-x64-/);
 } elsif ($^O eq "darwin") {
     $arch = "darwin-universal";
 } elsif ($^O eq "solaris") {
@@ -44,6 +47,9 @@ if ($^O eq "MSWin32") {
     $arch = "$^O-x86_64" if ($Config{archname} =~ /x86_64/);
 } elsif ($^O eq "cygwin") {
     $tclconfig = '/usr/lib/tclConfig.sh';
+} elsif ($^O eq "solaris") {
+    $arch = "$^O-x86" if ($Config{archname} =~ /[ix]86/);
+    $arch = "$^O-sparc" if ($Config{archname} =~ /sun4/);
 }
 
 sub _die ($) {
@@ -216,6 +222,8 @@ if ($^O eq 'darwin') {
     # darwin has a broken ranlib that requires you to run it anytime
     # you copy an archive file, so ensure ours it up-to-date
     system("ranlib tcl-core/$arch/libtclstub8.4.a");
+    system("git update-index --assume-unchanged tcl-core/$arch/libtclstub8.4.a")
+	if -d ".git";
     if ($libpath =~ /-framework/) {
 	# Frameworks require slightly different compile options
 	@extraargs = (dynamic_lib => {OTHERLDFLAGS => $libpath});
@@ -227,6 +235,15 @@ if ($^O eq 'darwin') {
 WriteMakefile(
     NAME => "Tcl",
     VERSION_FROM => 'Tcl.pm',
+    LICENSE => 'perl',
+    MIN_PERL_VERSION => '5.008',
+    ABSTRACT_FROM => 'Tcl.pm',
+    META_MERGE => {
+        resources => {
+            repository => 'http://github.com/gisle/tcl.pm',
+            MailingList => 'mailto:tcltk@perl.org',
+        }
+    },
     LIBS => ["$libpath"],
     INC => "$incpath",
     DEFINE => $defs,
@@ -259,4 +276,26 @@ sub MY::libscan {
     my($self, $path) =@_;
     return '' if $path =~ /\.pl$/i;
     return $path;
+}
+
+BEGIN {
+    # compatibility with older versions of MakeMaker
+    my $developer = -f ".git";
+    my %mm_req = (
+        LICENCE => 6.31,
+        META_MERGE => 6.45,
+        META_ADD => 6.45,
+        MIN_PERL_VERSION => 6.48,
+    );
+    undef(*WriteMakefile);
+    *WriteMakefile = sub {
+        my %arg = @_;
+        for (keys %mm_req) {
+            unless (eval { ExtUtils::MakeMaker->VERSION($mm_req{$_}) }) {
+                warn "$_ $@" if $developer;
+                delete $arg{$_};
+            }
+        }
+        ExtUtils::MakeMaker::WriteMakefile(%arg);
+    };
 }
